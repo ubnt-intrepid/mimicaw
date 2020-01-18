@@ -92,6 +92,7 @@ jobs:
       with:
         command: doc
         args: --no-deps
+    - run: rm -fv target/doc/.lock
 
     - name: Upload artifact
       uses: actions/upload-artifact@master
