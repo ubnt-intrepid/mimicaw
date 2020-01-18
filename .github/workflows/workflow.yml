@@ -40,8 +40,7 @@ jobs:
     - name: Run tests
       uses: actions-rs/cargo@v1
       with:
-        command: xscript
-        args: test
+        command: test
       if: matrix.conf.only_build != true
   
   Lint:
