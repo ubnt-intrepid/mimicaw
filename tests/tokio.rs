@@ -1,4 +1,4 @@
-use mimi::TestRunner;
+use mimi::{Outcome, TestRunner};
 
 #[derive(Default)]
 struct JobServer(Vec<tokio::task::JoinHandle<()>>);
@@ -21,36 +21,29 @@ async fn main() -> anyhow::Result<()> {
     let mut runner = TestRunner::from_env();
     let mut jobs = JobServer::default();
 
-    if let Some(mut test) = runner.add_test("case1", false) {
-        jobs.spawn(async move {
-            test.wait_ready().await;
-
+    if let Some(test) = runner.add_test("case1", false) {
+        jobs.spawn(test.run(async {
             // do stuff...
-
-            test.passed();
-        });
+            Outcome::passed()
+        }));
     }
 
-    if let Some(mut test) = runner.add_test("case2", false) {
-        jobs.spawn(async move {
-            test.wait_ready().await;
-
+    if let Some(test) = runner.add_test("case2", false) {
+        jobs.spawn(test.run(async {
             // do stuff...
-
-            test.failed(Some("foo".into()));
-        });
+            Outcome::failed(Some("foo"))
+        }));
     }
 
-    if let Some(mut test) = runner.add_test("case3", true) {
-        jobs.spawn(async move {
-            test.wait_ready().await;
+    if let Some(test) = runner.add_test("case3", true) {
+        jobs.spawn(test.run(async move {
             // do stuff ...
-            test.passed();
-        });
+            Outcome::passed()
+        }));
     }
 
     let report = runner
-        .start(async {
+        .run_tests(async {
             jobs.wait_all().await;
         })
         .await;

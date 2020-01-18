@@ -1,18 +1,42 @@
 //! Minimal test harness that mimics libtest for asynchronous integration tests.
 
-use futures::channel::oneshot;
+use futures::{channel::oneshot, future::Future};
+use futures_intrusive::sync::ManualResetEvent;
 use std::{
-    borrow::Cow,
     collections::hash_map::{Entry, HashMap},
-    future::Future,
+    sync::Arc,
 };
 use structopt::StructOpt;
 
 #[derive(Debug)]
-enum Outcome {
+pub struct Outcome(OutcomeKind);
+
+#[derive(Debug)]
+enum OutcomeKind {
     Passed,
-    Failed { msg: Option<Cow<'static, str>> },
+    Failed { msg: Option<String> },
     Ignored,
+    Canceled,
+}
+
+impl Outcome {
+    pub fn passed() -> Self {
+        Self(OutcomeKind::Passed)
+    }
+
+    pub fn failed(msg: Option<&str>) -> Self {
+        Self(OutcomeKind::Failed {
+            msg: msg.map(|s| s.into()),
+        })
+    }
+
+    fn ignored() -> Self {
+        Self(OutcomeKind::Ignored)
+    }
+
+    fn canceled() -> Self {
+        Self(OutcomeKind::Canceled)
+    }
 }
 
 #[derive(Debug, StructOpt)]
@@ -49,20 +73,24 @@ struct TestContext {
     ignored: bool,
 }
 
+/// The runner of a test suite.
 #[derive(Debug)]
 pub struct TestRunner {
     args: Arguments,
     tests: HashMap<String, TestContext>,
     num_filtered_out: usize,
+    started: Arc<ManualResetEvent>,
 }
 
 impl TestRunner {
+    /// Create a `TestRunner` in the current environment.
     pub fn from_env() -> Self {
         let args = Arguments::from_args();
         Self {
             args,
             tests: HashMap::new(),
             num_filtered_out: 0,
+            started: Arc::new(ManualResetEvent::new(false)),
         }
     }
 
@@ -90,7 +118,8 @@ impl TestRunner {
 
     /// Register a single test to the runner.
     ///
-    /// This method will return a `Test`
+    /// This method will return a handle if the specified test case needs
+    /// to be driven.
     pub fn add_test(&mut self, name: &str, ignored: bool) -> Option<Test> {
         if self.is_filtered(name) {
             self.num_filtered_out += 1;
@@ -112,28 +141,43 @@ impl TestRunner {
                         rx: Some(rx),
                         ignored: false,
                     });
-                    Some(Test { tx: Some(tx) })
+                    Some(Test {
+                        started: self.started.clone(),
+                        tx,
+                    })
                 }
             }
         }
     }
 
-    pub async fn start<F>(&mut self, progress: F) -> Report
+    /// Run the test suite and aggregate the results.
+    ///
+    /// The test suite is executed as follows:
+    ///
+    /// 1. A startup signal is sent to the handle `Test` returned when adding a test.
+    /// 2. Each test case is executed. This is usually performed by driving `progress`.
+    /// 3. After `progress` is completed, a cancellation signal is sent to each test
+    ///    case.
+    pub async fn run_tests<F>(&mut self, progress: F) -> Report
     where
         F: Future<Output = ()>,
     {
+        self.started.set();
         progress.await;
+
+        // TODO: send cancellation signal to test handles.
 
         let mut has_failed = false;
         for (name, ctx) in self.tests.drain() {
             let outcome = match ctx.rx {
-                Some(rx) => rx.await.unwrap(),
-                None => Outcome::Ignored,
+                Some(rx) => rx.await.unwrap_or_else(|_| Outcome::canceled()),
+                None => Outcome::ignored(),
             };
-            match outcome {
-                Outcome::Passed => println!("{}: passed", name),
-                Outcome::Ignored => println!("{}: ignored", name),
-                Outcome::Failed { msg } => {
+            match outcome.0 {
+                OutcomeKind::Passed => println!("{}: passed", name),
+                OutcomeKind::Ignored => println!("{}: ignored", name),
+                OutcomeKind::Canceled => println!("{}: canceled", name),
+                OutcomeKind::Failed { msg } => {
                     has_failed = true;
                     match msg {
                         Some(msg) => println!("{}: failed:\n{}", name, msg),
@@ -147,30 +191,22 @@ impl TestRunner {
     }
 }
 
+/// The handle to a test case.
 #[derive(Debug)]
 pub struct Test {
-    tx: Option<oneshot::Sender<Outcome>>,
+    started: Arc<ManualResetEvent>,
+    tx: oneshot::Sender<Outcome>,
 }
 
 impl Test {
-    pub async fn wait_ready(&mut self) {}
-
-    pub fn is_ready(&self) -> bool {
-        true
-    }
-
-    fn report(&mut self, outcome: Outcome) {
-        if let Some(tx) = self.tx.take() {
-            let _ = tx.send(outcome);
-        }
-    }
-
-    pub fn passed(&mut self) {
-        self.report(Outcome::Passed)
-    }
-
-    pub fn failed(&mut self, msg: Option<Cow<'static, str>>) {
-        self.report(Outcome::Failed { msg })
+    /// Wrap a future to catch events from the test runner.
+    pub async fn run<Fut>(self, test_case: Fut)
+    where
+        Fut: Future<Output = Outcome>,
+    {
+        self.started.wait().await;
+        let outcome = test_case.await;
+        let _ = self.tx.send(outcome);
     }
 }
 
