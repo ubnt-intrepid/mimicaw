@@ -21,19 +21,14 @@ pub(crate) struct Args {
 }
 
 impl Args {
-    pub(crate) fn from_env() -> Self {
-        // FIXME: The process should not be exited at here
-        // in order for the resources in main function to
-        // be appropriately dropped.
-
+    pub(crate) fn from_env() -> Result<Self, i32> {
         let args: Vec<_> = std::env::args().collect();
         let parser = Parser::new();
         match parser.parse_args(&args) {
-            Ok(Some(args)) => args,
-            Ok(None) => std::process::exit(0),
+            Ok(args) => args.ok_or(0),
             Err(err) => {
                 eprintln!("error: {}", err);
-                std::process::exit(crate::ERROR_CODE);
+                Err(crate::ERROR_CODE)
             }
         }
     }

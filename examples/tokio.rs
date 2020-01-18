@@ -1,4 +1,4 @@
-use mimi::{Outcome, TestRunner};
+use mimi::{Outcome, TestSuite};
 
 #[derive(Default)]
 struct JobServer(Vec<tokio::task::JoinHandle<()>>);
@@ -18,7 +18,7 @@ impl JobServer {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let mut runner = TestRunner::from_env();
+    let mut runner = TestSuite::from_env();
     let mut jobs = JobServer::default();
 
     if let Some(test) = runner.add_test("case1", false) {
