@@ -1,12 +1,16 @@
 //! Minimal test harness that mimics libtest for asynchronous integration tests.
 
+mod args;
+
+use crate::args::Args;
 use futures::{channel::oneshot, future::Future};
 use futures_intrusive::sync::ManualResetEvent;
 use std::{
     collections::hash_map::{Entry, HashMap},
     sync::Arc,
 };
-use structopt::StructOpt;
+
+const ERROR_CODE: i32 = 101;
 
 #[derive(Debug)]
 pub struct Outcome(OutcomeKind);
@@ -39,34 +43,6 @@ impl Outcome {
     }
 }
 
-#[derive(Debug, StructOpt)]
-#[structopt(
-    template = "Usage: [FLAGS] [OPTIONS] [FILTER]\n\n{all-args}\n\n\n{after-help}",
-    setting = structopt::clap::AppSettings::DisableVersion,
-)]
-struct Arguments {
-    /// Run ignored tests
-    #[structopt(long = "--ignored")]
-    enable_ignored_tests: bool,
-
-    /// List all tests
-    #[structopt(long = "--list")]
-    list: bool,
-
-    /// Exactly match filters rather than by substring
-    #[structopt(long = "--exact")]
-    exact: bool,
-
-    /// Skip tests whose names contain FILTER
-    #[structopt(long = "--skip", value_name = "FILTER", number_of_values = 1)]
-    skip: Vec<String>,
-
-    /// The FILTER string is tested against the name of all tests, and only
-    /// those tests whose names contain the filter are run.
-    #[structopt(name = "FILTER")]
-    filter_string: Option<String>,
-}
-
 #[derive(Debug)]
 struct TestContext {
     rx: Option<oneshot::Receiver<Outcome>>,
@@ -76,7 +52,7 @@ struct TestContext {
 /// The runner of a test suite.
 #[derive(Debug)]
 pub struct TestRunner {
-    args: Arguments,
+    args: Args,
     tests: HashMap<String, TestContext>,
     num_filtered_out: usize,
     started: Arc<ManualResetEvent>,
@@ -85,9 +61,8 @@ pub struct TestRunner {
 impl TestRunner {
     /// Create a `TestRunner` in the current environment.
     pub fn from_env() -> Self {
-        let args = Arguments::from_args();
         Self {
-            args,
+            args: Args::from_env(),
             tests: HashMap::new(),
             num_filtered_out: 0,
             started: Arc::new(ManualResetEvent::new(false)),
@@ -95,8 +70,8 @@ impl TestRunner {
     }
 
     fn is_filtered(&self, name: &str) -> bool {
-        if let Some(ref filter) = self.args.filter_string {
-            if self.args.exact && name != filter {
+        if let Some(ref filter) = self.args.filter {
+            if self.args.filter_exact && name != filter {
                 return true;
             }
             if !name.contains(filter) {
@@ -105,7 +80,7 @@ impl TestRunner {
         }
 
         for skip_filter in &self.args.skip {
-            if self.args.exact && name != skip_filter {
+            if self.args.filter_exact && name != skip_filter {
                 return true;
             }
             if !name.contains(skip_filter) {
@@ -129,7 +104,8 @@ impl TestRunner {
         match self.tests.entry(name.into()) {
             Entry::Occupied(..) => panic!("the test name is duplicated"),
             Entry::Vacant(entry) => {
-                if ignored && !self.args.enable_ignored_tests {
+                let ignored = ignored ^ self.args.run_ignored;
+                if ignored {
                     entry.insert(TestContext {
                         rx: None,
                         ignored: true,
