@@ -18,13 +18,3 @@ structopt = "0.3"
 anyhow = "1"
 async-std = { version = "1", features = ["attributes"] }
 tokio = { version = "0.2.0", features = [ "full" ] }
-
-[[test]]
-name = "tokio"
-path = "tests/tokio.rs"
-harness = false
-
-[[test]]
-name = "async_std"
-path = "tests/async_std.rs"
-harness = false
