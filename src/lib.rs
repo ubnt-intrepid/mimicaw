@@ -3,39 +3,17 @@
 mod args;
 mod suite;
 
-pub use crate::suite::{Test, TestSuite};
+pub use crate::suite::{Benchmark, Measurement, Test, TestSuite};
 
 const ERROR_CODE: i32 = 101;
 
 #[derive(Debug)]
-pub struct Outcome(OutcomeKind);
-
-#[derive(Debug)]
-enum OutcomeKind {
+enum Outcome {
     Passed,
     Failed { msg: Option<String> },
     Ignored,
+    Measured { measurement: Measurement },
     Canceled,
-}
-
-impl Outcome {
-    pub fn passed() -> Self {
-        Self(OutcomeKind::Passed)
-    }
-
-    pub fn failed(msg: Option<&str>) -> Self {
-        Self(OutcomeKind::Failed {
-            msg: msg.map(|s| s.into()),
-        })
-    }
-
-    fn ignored() -> Self {
-        Self(OutcomeKind::Ignored)
-    }
-
-    fn canceled() -> Self {
-        Self(OutcomeKind::Canceled)
-    }
 }
 
 #[derive(Debug)]

@@ -1,4 +1,4 @@
-use mimi::{Outcome, TestSuite};
+use mimi::TestSuite;
 
 #[derive(Default)]
 struct JobServer(Vec<async_std::task::JoinHandle<()>>);
@@ -24,21 +24,21 @@ async fn main() -> anyhow::Result<()> {
     if let Some(test) = runner.add_test("case1", false) {
         jobs.spawn(test.run(async {
             // do stuff...
-            Outcome::passed()
+            Ok(())
         }));
     }
 
     if let Some(test) = runner.add_test("case2", false) {
         jobs.spawn(test.run(async {
             // do stuff...
-            Outcome::failed(Some("foo"))
+            Err(Some("foo".into()))
         }));
     }
 
     if let Some(test) = runner.add_test("case3", true) {
         jobs.spawn(test.run(async move {
             // do stuff ...
-            Outcome::passed()
+            Ok(())
         }));
     }
 
