@@ -3,7 +3,7 @@
 mod args;
 mod suite;
 
-pub use crate::suite::{Benchmark, Measurement, Test, TestSuite};
+pub use crate::suite::{Benchmark, Measurement, Test, TestOptions, TestSuite};
 
 const ERROR_CODE: i32 = 101;
 

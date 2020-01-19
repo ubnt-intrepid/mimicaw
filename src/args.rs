@@ -11,7 +11,7 @@ pub(crate) struct Args {
     pub(crate) filter_exact: bool,
     pub(crate) run_ignored: bool,
     pub(crate) run_tests: bool,
-    pub(crate) bench_benchmarks: bool,
+    pub(crate) run_benchmarks: bool,
     pub(crate) logfile: Option<PathBuf>,
     pub(crate) nocapture: bool,
     pub(crate) color: ColorConfig,
@@ -209,8 +209,8 @@ impl Parser {
         let list = matches.opt_present("list");
         let logfile = matches.opt_str("logfile").map(|s| PathBuf::from(&s));
 
-        let bench_benchmarks = matches.opt_present("bench");
-        let run_tests = !bench_benchmarks || matches.opt_present("test");
+        let run_benchmarks = matches.opt_present("bench");
+        let run_tests = !run_benchmarks || matches.opt_present("test");
 
         let nocapture = matches.opt_present("nocapture") || {
             std::env::var("RUST_TEST_NOCAPTURE")
@@ -242,7 +242,7 @@ impl Parser {
             filter_exact,
             run_ignored,
             run_tests,
-            bench_benchmarks,
+            run_benchmarks,
             logfile,
             nocapture,
             color,

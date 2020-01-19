@@ -6,6 +6,23 @@ use std::{
     sync::Arc,
 };
 
+#[derive(Debug, Default)]
+pub struct TestOptions {
+    ignored: bool,
+}
+
+impl TestOptions {
+    pub fn ignored() -> Self {
+        Self { ignored: true }
+    }
+}
+
+#[derive(Debug)]
+struct TestContext {
+    opts: TestOptions,
+    rx: Option<oneshot::Receiver<Outcome>>,
+}
+
 /// A type that represents a test suite.
 #[derive(Debug)]
 pub struct TestSuite {
@@ -43,11 +60,7 @@ impl TestSuite {
         }
     }
 
-    fn is_filtered(&self, name: &str, is_benchmark: bool) -> bool {
-        if self.args.bench_benchmarks ^ !is_benchmark {
-            return true;
-        }
-
+    fn is_filtered(&self, name: &str) -> bool {
         if let Some(ref filter) = self.args.filter {
             if self.args.filter_exact && name != filter {
                 return true;
@@ -73,67 +86,51 @@ impl TestSuite {
     ///
     /// This method will return a handle if the specified test case needs
     /// to be driven.
-    pub fn add_test(&mut self, name: &str, ignored: bool) -> Option<Test> {
-        if self.is_filtered(name, false) {
-            self.num_filtered_out += 1;
-            return None;
-        }
-
-        match self.tests.entry(name.into()) {
-            Entry::Occupied(..) => panic!("the test name is duplicated"),
-            Entry::Vacant(entry) => {
-                let ignored = ignored ^ self.args.run_ignored;
-                if ignored {
-                    entry.insert(TestContext {
-                        rx: None,
-                        ignored: true,
-                    });
-                    None
-                } else {
-                    let (tx, rx) = oneshot::channel();
-                    entry.insert(TestContext {
-                        rx: Some(rx),
-                        ignored: false,
-                    });
-                    Some(Test {
-                        started: self.started.clone(),
-                        tx,
-                    })
-                }
-            }
-        }
+    pub fn add_test(&mut self, name: &str, opts: TestOptions) -> Option<Test> {
+        self.add_test_inner(name, opts, true) //
+            .map(|tx| Test {
+                started: self.started.clone(),
+                tx,
+            })
     }
 
     /// Register a single test to the runner.
     ///
     /// This method will return a handle if the specified test case needs
     /// to be driven.
-    pub fn add_benchmark(&mut self, name: &str, ignored: bool) -> Option<Benchmark> {
-        if self.is_filtered(name, true) {
-            self.num_filtered_out += 1;
-            return None;
-        }
+    pub fn add_bench(&mut self, name: &str, opts: TestOptions) -> Option<Benchmark> {
+        self.add_test_inner(name, opts, false) //
+            .map(|tx| Benchmark {
+                started: self.started.clone(),
+                tx,
+            })
+    }
+
+    fn add_test_inner(
+        &mut self,
+        name: &str,
+        opts: TestOptions,
+        is_test: bool,
+    ) -> Option<oneshot::Sender<Outcome>> {
+        let is_target_mode = if is_test {
+            self.args.run_tests
+        } else {
+            self.args.run_benchmarks
+        };
+        let ignored = opts.ignored || !is_target_mode || self.is_filtered(name);
 
         match self.tests.entry(name.into()) {
             Entry::Occupied(..) => panic!("the test name is duplicated"),
             Entry::Vacant(entry) => {
                 let ignored = ignored ^ self.args.run_ignored;
                 if ignored {
-                    entry.insert(TestContext {
-                        rx: None,
-                        ignored: true,
-                    });
+                    self.num_filtered_out += 1;
+                    entry.insert(TestContext { opts, rx: None });
                     None
                 } else {
                     let (tx, rx) = oneshot::channel();
-                    entry.insert(TestContext {
-                        rx: Some(rx),
-                        ignored: false,
-                    });
-                    Some(Benchmark {
-                        started: self.started.clone(),
-                        tx,
-                    })
+                    entry.insert(TestContext { opts, rx: Some(rx) });
+                    Some(tx)
                 }
             }
         }
@@ -182,12 +179,6 @@ impl TestSuite {
 
         Report { has_failed }
     }
-}
-
-#[derive(Debug)]
-struct TestContext {
-    rx: Option<oneshot::Receiver<Outcome>>,
-    ignored: bool,
 }
 
 /// The handle to a test case.
