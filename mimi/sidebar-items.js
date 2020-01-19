@@ -1,1 +1,1 @@
-initSidebarItems({"enum":[["Outcome",""]],"struct":[["Benchmark",""],["DefaultEventHandler",""],["Report",""],["Test","The handle to a test case."],["TestOptions",""],["TestSuite","A type that represents a test suite."]],"trait":[["EventHandler",""]]});
+initSidebarItems({"struct":[["Benchmark","The handle to a benchmark test."],["Test","The handle to a test."],["TestOptions","A set of options for a test or a benchmark."],["TestSuite","A type that represents a test suite."]]});
