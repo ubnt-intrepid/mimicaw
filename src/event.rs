@@ -21,33 +21,14 @@ pub struct Report {
     pub(crate) has_failed: bool,
 }
 
-impl Report {
-    pub fn has_failed(&self) -> bool {
-        self.has_failed
-    }
-
-    pub fn exit(self) -> ! {
-        if self.has_failed {
-            std::process::exit(101);
-        }
-        std::process::exit(0);
-    }
-}
-
 pub trait EventHandler {
-    fn list_tests(&self, tests: &[String]);
-
     fn dump_result(&self, name: &str, outcome: Outcome);
-
-    fn dump_summary(&self, report: &Report);
 }
 
 #[derive(Debug, Default)]
 pub struct DefaultEventHandler(());
 
 impl EventHandler for DefaultEventHandler {
-    fn list_tests(&self, _tests: &[String]) {}
-
     fn dump_result(&self, name: &str, outcome: Outcome) {
         match outcome {
             Outcome::Passed => println!("{}: passed", name),
@@ -62,6 +43,4 @@ impl EventHandler for DefaultEventHandler {
             },
         }
     }
-
-    fn dump_summary(&self, _report: &Report) {}
 }

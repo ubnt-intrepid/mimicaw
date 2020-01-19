@@ -9,19 +9,29 @@ use std::{
     sync::Arc,
 };
 
-#[derive(Debug, Default)]
+/// A set of options for a test or a benchmark.
+#[derive(Copy, Clone, Debug, Default)]
 pub struct TestOptions {
     ignored: bool,
 }
 
 impl TestOptions {
-    pub fn ignored() -> Self {
-        Self { ignored: true }
+    /// Create a new `TestOptions`.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Mark that the test will be ignored.
+    pub fn ignored(mut self, value: bool) -> Self {
+        self.ignored = value;
+        self
     }
 }
 
 #[derive(Debug)]
-struct TestContext {
+struct TestCase {
+    name: String,
+    is_test: bool,
     opts: TestOptions,
     rx: Option<oneshot::Receiver<Outcome>>,
 }
@@ -30,8 +40,7 @@ struct TestContext {
 #[derive(Debug)]
 pub struct TestSuite {
     args: Args,
-    tests: HashMap<String, TestContext>,
-    num_filtered_out: usize,
+    tests: HashMap<String, TestCase>,
     started: Arc<ManualResetEvent>,
 }
 
@@ -58,7 +67,6 @@ impl TestSuite {
         Self {
             args,
             tests: HashMap::new(),
-            num_filtered_out: 0,
             started: Arc::new(ManualResetEvent::new(false)),
         }
     }
@@ -85,9 +93,9 @@ impl TestSuite {
         false
     }
 
-    /// Register a single test to the runner.
+    /// Register a single test to the suite.
     ///
-    /// This method will return a handle if the specified test case needs
+    /// This method will return a handle if the specified test needs
     /// to be driven.
     pub fn add_test(&mut self, name: &str, opts: TestOptions) -> Option<Test> {
         self.add_test_inner(name, opts, true) //
@@ -97,9 +105,9 @@ impl TestSuite {
             })
     }
 
-    /// Register a single test to the runner.
+    /// Register a single benchmark test to the suite.
     ///
-    /// This method will return a handle if the specified test case needs
+    /// This method will return a handle if the specified benchmark test needs
     /// to be driven.
     pub fn add_bench(&mut self, name: &str, opts: TestOptions) -> Option<Benchmark> {
         self.add_test_inner(name, opts, false) //
@@ -125,29 +133,28 @@ impl TestSuite {
         match self.tests.entry(name.into()) {
             Entry::Occupied(..) => panic!("the test name is duplicated"),
             Entry::Vacant(entry) => {
+                let name = entry.key().clone();
                 let ignored = ignored ^ self.args.run_ignored;
                 if ignored {
-                    self.num_filtered_out += 1;
-                    entry.insert(TestContext { opts, rx: None });
+                    entry.insert(TestCase {
+                        name,
+                        is_test,
+                        opts,
+                        rx: None,
+                    });
                     None
                 } else {
                     let (tx, rx) = oneshot::channel();
-                    entry.insert(TestContext { opts, rx: Some(rx) });
+                    entry.insert(TestCase {
+                        name,
+                        is_test,
+                        opts,
+                        rx: Some(rx),
+                    });
                     Some(tx)
                 }
             }
         }
-    }
-
-    /// Run the test suite and aggregate the results.
-    ///
-    /// See `run_tests_with` for details.
-    pub async fn run_tests<F>(&mut self, progress: F) -> Report
-    where
-        F: Future<Output = ()>,
-    {
-        self.run_tests_with(progress, DefaultEventHandler::default())
-            .await
     }
 
     /// Run the test suite and aggregate the results.
@@ -158,7 +165,23 @@ impl TestSuite {
     /// 2. Each test case is executed. This is usually performed by driving `progress`.
     /// 3. After `progress` is completed, a cancellation signal is sent to each test
     ///    case.
-    pub async fn run_tests_with<F, H>(&mut self, progress: F, handler: H) -> Report
+    pub async fn run_tests<F>(&mut self, progress: F) -> i32
+    where
+        F: Future<Output = ()>,
+    {
+        if self.args.list {
+            // TODO: list test cases.
+            return 0;
+        }
+
+        let _report = self
+            .run_tests_with(progress, DefaultEventHandler::default())
+            .await;
+        // TODO: summary
+        0
+    }
+
+    async fn run_tests_with<F, H>(&mut self, progress: F, handler: H) -> Report
     where
         F: Future<Output = ()>,
         H: EventHandler,
@@ -180,13 +203,11 @@ impl TestSuite {
             handler.dump_result(&name, outcome);
         }
 
-        let report = Report { has_failed };
-        handler.dump_summary(&report);
-        report
+        Report { has_failed }
     }
 }
 
-/// The handle to a test case.
+/// The handle to a test.
 #[derive(Debug)]
 pub struct Test {
     started: Arc<ManualResetEvent>,
@@ -194,7 +215,7 @@ pub struct Test {
 }
 
 impl Test {
-    /// Wrap a future to catch events from the test runner.
+    /// Wrap a future to catch events from the test suite.
     pub async fn run<Fut>(self, test_case: Fut)
     where
         Fut: Future<Output = Result<(), Option<String>>>,
@@ -208,6 +229,7 @@ impl Test {
     }
 }
 
+/// The handle to a benchmark test.
 #[derive(Debug)]
 pub struct Benchmark {
     started: Arc<ManualResetEvent>,
@@ -215,7 +237,7 @@ pub struct Benchmark {
 }
 
 impl Benchmark {
-    /// Wrap a future to catch events from the test runner.
+    /// Wrap a future to catch events from the test suite.
     pub async fn run<Fut>(self, test_case: Fut)
     where
         Fut: Future<Output = Result<(u64, u64), Option<String>>>,

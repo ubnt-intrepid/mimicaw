@@ -28,7 +28,7 @@ impl Args {
             Ok(args) => args.ok_or(0),
             Err(err) => {
                 eprintln!("error: {}", err);
-                Err(crate::ERROR_CODE)
+                Err(crate::ERROR_STATUS_CODE)
             }
         }
     }

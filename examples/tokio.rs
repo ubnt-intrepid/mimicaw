@@ -20,25 +20,25 @@ impl JobServer {
 
 #[tokio::main]
 async fn main() {
-    let report = {
+    std::process::exit({
         let mut tests = TestSuite::from_env();
         let mut jobs = JobServer::default();
 
-        if let Some(test) = tests.add_test("case1", TestOptions::default()) {
+        if let Some(test) = tests.add_test("case1", TestOptions::new()) {
             jobs.spawn(test.run(async {
                 // do stuff...
                 Ok(())
             }));
         }
 
-        if let Some(test) = tests.add_test("case2", TestOptions::default()) {
+        if let Some(test) = tests.add_test("case2", TestOptions::new()) {
             jobs.spawn(test.run(async {
                 // do stuff...
                 Err(Some("foo".into()))
             }));
         }
 
-        if let Some(test) = tests.add_test("case3", TestOptions::ignored()) {
+        if let Some(test) = tests.add_test("case3", TestOptions::new().ignored(true)) {
             jobs.spawn(test.run(async move {
                 // do stuff ...
                 Ok(())
@@ -46,8 +46,5 @@ async fn main() {
         }
 
         tests.run_tests(jobs.wait_all()).await
-    };
-
-    println!("{:?}", report);
-    report.exit()
+    });
 }
