@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["Benchmark",""],["Measurement",""],["Report",""],["Test","The handle to a test case."],["TestSuite","A type that represents a test suite."]]});
+initSidebarItems({"struct":[["Benchmark",""],["Measurement",""],["Report",""],["Test","The handle to a test case."],["TestOptions",""],["TestSuite","A type that represents a test suite."]]});
