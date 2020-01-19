@@ -1,4 +1,7 @@
-use crate::{args::Args, Outcome, Report};
+use crate::{
+    args::Args,
+    event::{DefaultEventHandler, EventHandler, Outcome, Report},
+};
 use futures::{channel::oneshot, future::Future};
 use futures_intrusive::sync::ManualResetEvent;
 use std::{
@@ -138,15 +141,27 @@ impl TestSuite {
 
     /// Run the test suite and aggregate the results.
     ///
+    /// See `run_tests_with` for details.
+    pub async fn run_tests<F>(&mut self, progress: F) -> Report
+    where
+        F: Future<Output = ()>,
+    {
+        self.run_tests_with(progress, DefaultEventHandler::default())
+            .await
+    }
+
+    /// Run the test suite and aggregate the results.
+    ///
     /// The test suite is executed as follows:
     ///
     /// 1. A startup signal is sent to the handle `Test` returned when adding a test.
     /// 2. Each test case is executed. This is usually performed by driving `progress`.
     /// 3. After `progress` is completed, a cancellation signal is sent to each test
     ///    case.
-    pub async fn run_tests<F>(&mut self, progress: F) -> Report
+    pub async fn run_tests_with<F, H>(&mut self, progress: F, handler: H) -> Report
     where
         F: Future<Output = ()>,
+        H: EventHandler,
     {
         self.started.set();
         progress.await;
@@ -159,25 +174,15 @@ impl TestSuite {
                 Some(rx) => rx.await.unwrap_or_else(|_| Outcome::Canceled),
                 None => Outcome::Ignored,
             };
-            match outcome {
-                Outcome::Passed => println!("{}: passed", name),
-                Outcome::Ignored => println!("{}: ignored", name),
-                Outcome::Canceled => println!("{}: canceled", name),
-                Outcome::Measured { measurement } => println!(
-                    "{}: measured (avg={}, var={})",
-                    name, measurement.average, measurement.variance
-                ),
-                Outcome::Failed { msg } => {
-                    has_failed = true;
-                    match msg {
-                        Some(msg) => println!("{}: failed:\n{}", name, msg),
-                        None => println!("{}: failed", name),
-                    }
-                }
+            if let Outcome::Failed { .. } = outcome {
+                has_failed = true;
             }
+            handler.dump_result(&name, outcome);
         }
 
-        Report { has_failed }
+        let report = Report { has_failed };
+        handler.dump_summary(&report);
+        report
     }
 }
 
@@ -213,19 +218,13 @@ impl Benchmark {
     /// Wrap a future to catch events from the test runner.
     pub async fn run<Fut>(self, test_case: Fut)
     where
-        Fut: Future<Output = Result<Measurement, Option<String>>>,
+        Fut: Future<Output = Result<(u64, u64), Option<String>>>,
     {
         self.started.wait().await;
         let outcome = match test_case.await {
-            Ok(measurement) => Outcome::Measured { measurement },
+            Ok((average, variance)) => Outcome::Measured { average, variance },
             Err(msg) => Outcome::Failed { msg },
         };
         let _ = self.tx.send(outcome);
     }
-}
-
-#[derive(Debug)]
-pub struct Measurement {
-    pub average: u64,
-    pub variance: u64,
 }

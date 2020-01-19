@@ -1,5 +1,5 @@
 use futures::{executor::block_on, future::Future};
-use mimi::{Measurement, TestOptions, TestSuite};
+use mimi::{TestOptions, TestSuite};
 use std::pin::Pin;
 
 fn main() {
@@ -10,20 +10,14 @@ fn main() {
         if let Some(bench) = runner.add_bench("bench1", TestOptions::default()) {
             jobs.push(Box::pin(bench.run(async {
                 // do stuff...
-                Ok(Measurement {
-                    average: 1274,
-                    variance: 23,
-                })
+                Ok((1274, 23))
             })));
         }
 
         if let Some(bench) = runner.add_bench("bench2", TestOptions::ignored()) {
             jobs.push(Box::pin(bench.run(async {
                 // do stuff...
-                Ok(Measurement {
-                    average: 23,
-                    variance: 430,
-                })
+                Ok((23, 430))
             })));
         }
 

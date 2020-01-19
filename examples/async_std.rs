@@ -45,11 +45,7 @@ async fn main() {
             }));
         }
 
-        tests
-            .run_tests(async {
-                jobs.wait_all().await;
-            })
-            .await
+        tests.run_tests(jobs.wait_all()).await
     };
 
     println!("{:?}", report);
