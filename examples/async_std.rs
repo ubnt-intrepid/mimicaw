@@ -1,34 +1,35 @@
 use async_std::task;
+use futures_timer::Delay;
 use mimi::{TestDriver, TestOptions};
+use std::time::Duration;
 
 #[async_std::main]
 async fn main() {
     std::process::exit({
         let mut driver = TestDriver::from_env();
 
-        {
-            let mut tests = driver.test_suite();
+        if let Some(test) = driver.add_test("case1", TestOptions::new()) {
+            task::spawn(test.run(async {
+                Delay::new(Duration::from_secs(8)).await;
+                // do stuff...
+                Ok(())
+            }));
+        }
 
-            if let Some(test) = tests.add_test("case1", TestOptions::new()) {
-                task::spawn(test.run(async {
-                    // do stuff...
-                    Ok(())
-                }));
-            }
+        if let Some(test) = driver.add_test("case2", TestOptions::new()) {
+            task::spawn(test.run(async {
+                Delay::new(Duration::from_secs(4)).await;
+                // do stuff...
+                Err(Some("foo".into()))
+            }));
+        }
 
-            if let Some(test) = tests.add_test("case2", TestOptions::new()) {
-                task::spawn(test.run(async {
-                    // do stuff...
-                    Err(Some("foo".into()))
-                }));
-            }
-
-            if let Some(test) = tests.add_test("case3", TestOptions::new().ignored(true)) {
-                task::spawn(test.run(async move {
-                    // do stuff ...
-                    Ok(())
-                }));
-            }
+        if let Some(test) = driver.add_test("case3", TestOptions::new().ignored(true)) {
+            task::spawn(test.run(async move {
+                Delay::new(Duration::from_secs(6)).await;
+                // do stuff ...
+                Ok(())
+            }));
         }
 
         driver.run_tests().await

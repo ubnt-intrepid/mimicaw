@@ -87,10 +87,6 @@ impl TestDriver {
         }
     }
 
-    pub fn test_suite(&mut self) -> TestSuite<'_> {
-        TestSuite { driver: self }
-    }
-
     fn is_filtered(&self, name: &str) -> bool {
         if let Some(ref filter) = self.args.filter {
             if self.args.filter_exact && name != filter {
@@ -113,7 +109,7 @@ impl TestDriver {
         false
     }
 
-    fn add_test(&mut self, name: &str, kind: TestKind, opts: TestOptions) -> Option<Handle> {
+    fn add_test_inner(&mut self, name: &str, kind: TestKind, opts: TestOptions) -> Option<Handle> {
         let name = Arc::new(name.to_string());
         assert!(
             !self.pending_tests.contains_key(&*name),
@@ -155,6 +151,24 @@ impl TestDriver {
         );
 
         handle
+    }
+
+    /// Register a single test to the suite.
+    ///
+    /// This method will return a handle if the specified test needs
+    /// to be driven.
+    pub fn add_test(&mut self, name: &str, opts: TestOptions) -> Option<Test> {
+        self.add_test_inner(name, TestKind::Test, opts) //
+            .map(Test)
+    }
+
+    /// Register a single benchmark test to the suite.
+    ///
+    /// This method will return a handle if the specified benchmark test needs
+    /// to be driven.
+    pub fn add_bench(&mut self, name: &str, opts: TestOptions) -> Option<Benchmark> {
+        self.add_test_inner(name, TestKind::Bench, opts)
+            .map(Benchmark)
     }
 
     fn print_list(&self) {
@@ -280,34 +294,6 @@ impl TestDriver {
         } else {
             crate::ERROR_STATUS_CODE
         }
-    }
-}
-
-/// A type that represents a test suite.
-#[derive(Debug)]
-pub struct TestSuite<'a> {
-    driver: &'a mut TestDriver,
-}
-
-impl TestSuite<'_> {
-    /// Register a single test to the suite.
-    ///
-    /// This method will return a handle if the specified test needs
-    /// to be driven.
-    pub fn add_test(&mut self, name: &str, opts: TestOptions) -> Option<Test> {
-        self.driver
-            .add_test(name, TestKind::Test, opts) //
-            .map(Test)
-    }
-
-    /// Register a single benchmark test to the suite.
-    ///
-    /// This method will return a handle if the specified benchmark test needs
-    /// to be driven.
-    pub fn add_bench(&mut self, name: &str, opts: TestOptions) -> Option<Benchmark> {
-        self.driver
-            .add_test(name, TestKind::Bench, opts)
-            .map(Benchmark)
     }
 }
 
