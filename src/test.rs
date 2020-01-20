@@ -1,7 +1,4 @@
-use crate::{
-    args::Args,
-    event::{DefaultEventHandler, EventHandler, Outcome, Report},
-};
+use crate::args::Args;
 use futures::{channel::oneshot, future::Future};
 use futures_intrusive::sync::ManualResetEvent;
 use std::{
@@ -29,9 +26,15 @@ impl TestOptions {
 }
 
 #[derive(Debug)]
+enum TestKind {
+    Test,
+    Bench,
+}
+
+#[derive(Debug)]
 struct TestCase {
     name: String,
-    is_test: bool,
+    kind: TestKind,
     opts: TestOptions,
     rx: Option<oneshot::Receiver<Outcome>>,
 }
@@ -98,7 +101,7 @@ impl TestSuite {
     /// This method will return a handle if the specified test needs
     /// to be driven.
     pub fn add_test(&mut self, name: &str, opts: TestOptions) -> Option<Test> {
-        self.add_test_inner(name, opts, true) //
+        self.add_test_inner(name, TestKind::Test, opts) //
             .map(|tx| Test {
                 started: self.started.clone(),
                 tx,
@@ -110,7 +113,7 @@ impl TestSuite {
     /// This method will return a handle if the specified benchmark test needs
     /// to be driven.
     pub fn add_bench(&mut self, name: &str, opts: TestOptions) -> Option<Benchmark> {
-        self.add_test_inner(name, opts, false) //
+        self.add_test_inner(name, TestKind::Bench, opts) //
             .map(|tx| Benchmark {
                 started: self.started.clone(),
                 tx,
@@ -120,39 +123,35 @@ impl TestSuite {
     fn add_test_inner(
         &mut self,
         name: &str,
+        kind: TestKind,
         opts: TestOptions,
-        is_test: bool,
     ) -> Option<oneshot::Sender<Outcome>> {
-        let is_target_mode = if is_test {
-            self.args.run_tests
-        } else {
-            self.args.run_benchmarks
+        let is_target_mode = match kind {
+            TestKind::Test => self.args.run_tests,
+            TestKind::Bench => self.args.run_benchmarks,
         };
-        let ignored = opts.ignored || !is_target_mode || self.is_filtered(name);
+        let filtered = opts.ignored || !is_target_mode || self.is_filtered(name);
+        let filtered = filtered ^ self.args.run_ignored;
 
         match self.tests.entry(name.into()) {
             Entry::Occupied(..) => panic!("the test name is duplicated"),
             Entry::Vacant(entry) => {
-                let name = entry.key().clone();
-                let ignored = ignored ^ self.args.run_ignored;
-                if ignored {
-                    entry.insert(TestCase {
-                        name,
-                        is_test,
-                        opts,
-                        rx: None,
-                    });
-                    None
-                } else {
+                let (tx_opt, rx_opt) = if !filtered {
                     let (tx, rx) = oneshot::channel();
-                    entry.insert(TestCase {
-                        name,
-                        is_test,
-                        opts,
-                        rx: Some(rx),
-                    });
-                    Some(tx)
-                }
+                    (Some(tx), Some(rx))
+                } else {
+                    (None, None)
+                };
+
+                let name = entry.key().clone();
+                entry.insert(TestCase {
+                    name,
+                    kind,
+                    opts,
+                    rx: rx_opt,
+                });
+
+                tx_opt
             }
         }
     }
@@ -170,40 +169,83 @@ impl TestSuite {
         F: Future<Output = ()>,
     {
         if self.args.list {
-            // TODO: list test cases.
+            let quiet = self.args.format == crate::args::OutputFormat::Terse;
+
+            let mut num_tests = 0;
+            let mut num_benches = 0;
+
+            for test in self.tests.values() {
+                let kind_str = match test.kind {
+                    TestKind::Test => {
+                        num_tests += 1;
+                        "test"
+                    }
+                    TestKind::Bench => {
+                        num_benches += 1;
+                        "benchmark"
+                    }
+                };
+                println!("{}: {}", test.name, kind_str);
+            }
+
+            if !quiet {
+                fn plural_suffix(n: usize) -> &'static str {
+                    match n {
+                        1 => "",
+                        _ => "s",
+                    }
+                }
+
+                if num_tests != 0 || num_benches != 0 {
+                    println!();
+                }
+                println!(
+                    "{} test{}, {} benchmark{}",
+                    num_tests,
+                    plural_suffix(num_tests),
+                    num_benches,
+                    plural_suffix(num_benches)
+                );
+            }
+
             return 0;
         }
 
-        let _report = self
-            .run_tests_with(progress, DefaultEventHandler::default())
-            .await;
-        // TODO: summary
-        0
-    }
-
-    async fn run_tests_with<F, H>(&mut self, progress: F, handler: H) -> Report
-    where
-        F: Future<Output = ()>,
-        H: EventHandler,
-    {
         self.started.set();
         progress.await;
-
         // TODO: send cancellation signal to test handles.
 
-        let mut has_failed = false;
-        for (name, ctx) in self.tests.drain() {
-            let outcome = match ctx.rx {
+        let mut report = Report { has_failed: false };
+
+        for (name, test) in self.tests.drain() {
+            let outcome = match test.rx {
                 Some(rx) => rx.await.unwrap_or_else(|_| Outcome::Canceled),
                 None => Outcome::Ignored,
             };
             if let Outcome::Failed { .. } = outcome {
-                has_failed = true;
+                report.has_failed = true;
             }
-            handler.dump_result(&name, outcome);
+            match outcome {
+                Outcome::Passed => println!("{}: passed", name),
+                Outcome::Ignored => println!("{}: ignored", name),
+                Outcome::Canceled => println!("{}: canceled", name),
+                Outcome::Measured { average, variance } => {
+                    println!("{}: measured (avg={}, var={})", name, average, variance)
+                }
+                Outcome::Failed { msg } => match msg {
+                    Some(msg) => println!("{}: failed:\n{}", name, msg),
+                    None => println!("{}: failed", name),
+                },
+            }
         }
 
-        Report { has_failed }
+        // TODO: summary report
+
+        if !report.has_failed {
+            0
+        } else {
+            crate::ERROR_STATUS_CODE
+        }
     }
 }
 
@@ -249,4 +291,27 @@ impl Benchmark {
         };
         let _ = self.tx.send(outcome);
     }
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum Outcome {
+    Passed,
+    Failed {
+        msg: Option<String>,
+    },
+    Ignored,
+    Measured {
+        average: u64,
+        variance: u64,
+    },
+
+    #[doc(hidden)]
+    Canceled,
+}
+
+#[derive(Debug)]
+#[must_use]
+pub struct Report {
+    pub(crate) has_failed: bool,
 }
