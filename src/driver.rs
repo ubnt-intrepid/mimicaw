@@ -5,9 +5,10 @@ use futures::{
     future::Future,
     task::{self, Poll},
 };
+use indexmap::IndexMap;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use pin_project_lite::pin_project;
-use std::{collections::HashMap, pin::Pin, sync::Arc};
+use std::{pin::Pin, sync::Arc};
 
 /// A set of options for a test or a benchmark.
 #[derive(Copy, Clone, Debug, Default)]
@@ -66,7 +67,7 @@ impl Future for TestCase {
 #[derive(Debug)]
 pub struct TestDriver {
     args: Args,
-    pending_tests: HashMap<Arc<String>, TestCase>,
+    pending_tests: IndexMap<Arc<String>, TestCase>,
 }
 
 impl TestDriver {
@@ -75,7 +76,7 @@ impl TestDriver {
         match Args::from_env() {
             Ok(args) => Self {
                 args,
-                pending_tests: HashMap::new(),
+                pending_tests: IndexMap::new(),
             },
             Err(code) => {
                 // The process should not be exited at here
@@ -206,21 +207,27 @@ impl TestDriver {
 
         println!("======== RUNNING TESTS ========");
 
+        let name_max_length = self
+            .pending_tests
+            .keys()
+            .map(|key| key.len())
+            .max()
+            .unwrap_or(0);
+
         let multi_progress = MultiProgress::new();
         let progress_style = ProgressStyle::default_spinner() //
-            .template("{prefix:.bold.dim} {spinner} {wide_msg}");
+            .template(&format!(
+                "{{prefix:{}.bold.dim}} {{spinner}} {{wide_msg}}",
+                name_max_length
+            ));
 
         let mut running_tests = vec![];
         let mut filtered_tests = vec![];
 
-        for (_name, mut test) in self.pending_tests.drain() {
+        for (_name, mut test) in self.pending_tests.drain(..) {
             let progress = multi_progress.add(ProgressBar::new_spinner());
             progress.set_style(progress_style.clone());
-            let kind = match test.kind {
-                TestKind::Test => "test",
-                TestKind::Bench => "benchmark",
-            };
-            progress.set_prefix(&format!("[{}] {}", kind, test.name));
+            progress.set_prefix(&*test.name);
 
             if let Some(tx) = test.tx_progress.take() {
                 let _ = tx.send(progress);
@@ -317,7 +324,7 @@ impl Handle {
     {
         let progress = self.progress.await.unwrap();
         progress.enable_steady_tick(100);
-        progress.set_message("running...");
+        progress.set_message("running");
 
         let outcome = fut.await;
         match outcome {

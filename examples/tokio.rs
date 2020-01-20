@@ -25,7 +25,9 @@ async fn main() {
                 }));
             }
 
-            if let Some(test) = tests.add_test("case3", TestOptions::new().ignored(true)) {
+            if let Some(test) =
+                tests.add_test("case3_a_should_be_zero", TestOptions::new().ignored(true))
+            {
                 task::spawn(test.run(async move {
                     tokio::time::delay_for(tokio::time::Duration::from_secs(3)).await;
                     // do stuff ...
