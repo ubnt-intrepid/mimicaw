@@ -1,6 +1,8 @@
 use crate::args::Args;
+use console::style;
 use futures::{channel::oneshot, future::Future};
 use futures_intrusive::sync::ManualResetEvent;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::{
     collections::hash_map::{Entry, HashMap},
     sync::Arc,
@@ -25,7 +27,7 @@ impl TestOptions {
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 enum TestKind {
     Test,
     Bench,
@@ -45,6 +47,8 @@ pub struct TestSuite {
     args: Args,
     tests: HashMap<String, TestCase>,
     started: Arc<ManualResetEvent>,
+    multi_progress: Arc<MultiProgress>,
+    progress_style: ProgressStyle,
 }
 
 impl TestSuite {
@@ -71,6 +75,11 @@ impl TestSuite {
             args,
             tests: HashMap::new(),
             started: Arc::new(ManualResetEvent::new(false)),
+            multi_progress: Arc::new(MultiProgress::new()),
+            progress_style: {
+                ProgressStyle::default_spinner() //
+                    .template("{prefix:.bold.dim} {spinner} {wide_msg}")
+            },
         }
     }
 
@@ -102,10 +111,7 @@ impl TestSuite {
     /// to be driven.
     pub fn add_test(&mut self, name: &str, opts: TestOptions) -> Option<Test> {
         self.add_test_inner(name, TestKind::Test, opts) //
-            .map(|tx| Test {
-                started: self.started.clone(),
-                tx,
-            })
+            .map(Test)
     }
 
     /// Register a single benchmark test to the suite.
@@ -113,19 +119,11 @@ impl TestSuite {
     /// This method will return a handle if the specified benchmark test needs
     /// to be driven.
     pub fn add_bench(&mut self, name: &str, opts: TestOptions) -> Option<Benchmark> {
-        self.add_test_inner(name, TestKind::Bench, opts) //
-            .map(|tx| Benchmark {
-                started: self.started.clone(),
-                tx,
-            })
+        self.add_test_inner(name, TestKind::Bench, opts)
+            .map(Benchmark)
     }
 
-    fn add_test_inner(
-        &mut self,
-        name: &str,
-        kind: TestKind,
-        opts: TestOptions,
-    ) -> Option<oneshot::Sender<Outcome>> {
+    fn add_test_inner(&mut self, name: &str, kind: TestKind, opts: TestOptions) -> Option<Handle> {
         let is_target_mode = match kind {
             TestKind::Test => self.args.run_tests,
             TestKind::Bench => self.args.run_benchmarks,
@@ -145,13 +143,28 @@ impl TestSuite {
 
                 let name = entry.key().clone();
                 entry.insert(TestCase {
-                    name,
+                    name: name.clone(),
                     kind,
                     opts,
                     rx: rx_opt,
                 });
 
-                tx_opt
+                let kind = match kind {
+                    TestKind::Test => "test",
+                    TestKind::Bench => "benchmark",
+                };
+                let progress = self.multi_progress.add(ProgressBar::new_spinner());
+                progress.set_style(self.progress_style.clone());
+                progress.set_prefix(&format!("[{} {}]", kind, name));
+                if filtered {
+                    progress.finish_with_message(&style("ignored").yellow().to_string());
+                }
+
+                tx_opt.map(|tx| Handle {
+                    started: self.started.clone(),
+                    progress,
+                    tx,
+                })
             }
         }
     }
@@ -164,10 +177,7 @@ impl TestSuite {
     /// 2. Each test case is executed. This is usually performed by driving `progress`.
     /// 3. After `progress` is completed, a cancellation signal is sent to each test
     ///    case.
-    pub async fn run_tests<F>(&mut self, progress: F) -> i32
-    where
-        F: Future<Output = ()>,
-    {
+    pub async fn run_tests(&mut self) -> i32 {
         if self.args.list {
             let quiet = self.args.format == crate::args::OutputFormat::Terse;
 
@@ -211,11 +221,23 @@ impl TestSuite {
             return 0;
         }
 
+        println!("======== RUNNING TESTS ========");
         self.started.set();
-        progress.await;
-        // TODO: send cancellation signal to test handles.
+        // TODO: await completion of test jobs.
+        {
+            let (tx, rx) = oneshot::channel();
+            let multi_progress = self.multi_progress.clone();
+            std::thread::spawn(move || {
+                let res = multi_progress.join();
+                let _ = tx.send(res);
+            });
+            rx.await.unwrap().unwrap();
+        }
 
         let mut report = Report { has_failed: false };
+
+        println!();
+        println!("======== SUMMARY ========");
 
         for (name, test) in self.tests.drain() {
             let outcome = match test.rx {
@@ -249,12 +271,46 @@ impl TestSuite {
     }
 }
 
-/// The handle to a test.
 #[derive(Debug)]
-pub struct Test {
+struct Handle {
     started: Arc<ManualResetEvent>,
+    progress: ProgressBar,
     tx: oneshot::Sender<Outcome>,
 }
+
+impl Handle {
+    async fn run<Fut>(self, fut: Fut)
+    where
+        Fut: Future<Output = Outcome>,
+    {
+        self.started.wait().await;
+        self.progress.enable_steady_tick(100);
+        self.progress.set_message("running...");
+
+        let outcome = fut.await;
+        match outcome {
+            Outcome::Passed => {
+                self.progress
+                    .finish_with_message(&style("passed").green().to_string());
+            }
+            Outcome::Failed { .. } => {
+                self.progress
+                    .finish_with_message(&style("failed").red().bold().to_string());
+            }
+            Outcome::Measured { .. } => {
+                self.progress
+                    .finish_with_message(&style("finished").green().to_string());
+            }
+            _ => (),
+        };
+
+        let _ = self.tx.send(outcome);
+    }
+}
+
+/// The handle to a test.
+#[derive(Debug)]
+pub struct Test(Handle);
 
 impl Test {
     /// Wrap a future to catch events from the test suite.
@@ -262,21 +318,20 @@ impl Test {
     where
         Fut: Future<Output = Result<(), Option<String>>>,
     {
-        self.started.wait().await;
-        let outcome = match test_case.await {
-            Ok(()) => Outcome::Passed,
-            Err(msg) => Outcome::Failed { msg },
-        };
-        let _ = self.tx.send(outcome);
+        self.0
+            .run(async {
+                match test_case.await {
+                    Ok(()) => Outcome::Passed,
+                    Err(msg) => Outcome::Failed { msg },
+                }
+            })
+            .await
     }
 }
 
 /// The handle to a benchmark test.
 #[derive(Debug)]
-pub struct Benchmark {
-    started: Arc<ManualResetEvent>,
-    tx: oneshot::Sender<Outcome>,
-}
+pub struct Benchmark(Handle);
 
 impl Benchmark {
     /// Wrap a future to catch events from the test suite.
@@ -284,12 +339,14 @@ impl Benchmark {
     where
         Fut: Future<Output = Result<(u64, u64), Option<String>>>,
     {
-        self.started.wait().await;
-        let outcome = match test_case.await {
-            Ok((average, variance)) => Outcome::Measured { average, variance },
-            Err(msg) => Outcome::Failed { msg },
-        };
-        let _ = self.tx.send(outcome);
+        self.0
+            .run(async {
+                match test_case.await {
+                    Ok((average, variance)) => Outcome::Measured { average, variance },
+                    Err(msg) => Outcome::Failed { msg },
+                }
+            })
+            .await
     }
 }
 

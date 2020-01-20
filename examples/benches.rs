@@ -1,44 +1,48 @@
-use futures::{executor::block_on, future::Future};
+use futures::{executor::LocalPool, task::LocalSpawnExt};
 use mimi::{TestOptions, TestSuite};
-use std::pin::Pin;
 
 fn main() {
-    std::process::exit(block_on(async {
+    std::process::exit({
         let mut tests = TestSuite::from_env();
-        let mut jobs = Vec::<Pin<Box<dyn Future<Output = ()>>>>::new();
+        let mut pool = LocalPool::new();
+        let spawner = pool.spawner();
 
         if let Some(bench) = tests.add_bench("bench1", TestOptions::new()) {
-            jobs.push(Box::pin(bench.run(async {
-                // do stuff...
-                Ok((1274, 23))
-            })));
+            spawner
+                .spawn_local(bench.run(async {
+                    // do stuff...
+                    Ok((1274, 23))
+                }))
+                .unwrap();
         }
 
         if let Some(bench) = tests.add_bench("bench2", TestOptions::new().ignored(true)) {
-            jobs.push(Box::pin(bench.run(async {
-                // do stuff...
-                Ok((23, 430))
-            })));
+            spawner
+                .spawn_local(bench.run(async {
+                    // do stuff...
+                    Ok((23, 430))
+                }))
+                .unwrap();
         }
 
         if let Some(test) = tests.add_test("test1", TestOptions::new()) {
-            jobs.push(Box::pin(test.run(async {
-                // do stuff...
-                Ok(())
-            })));
+            spawner
+                .spawn_local(test.run(async {
+                    // do stuff...
+                    Ok(())
+                }))
+                .unwrap();
         }
 
         if let Some(test) = tests.add_test("test2", TestOptions::new().ignored(true)) {
-            jobs.push(Box::pin(test.run(async {
-                // do stuff...
-                Ok(())
-            })));
+            spawner
+                .spawn_local(test.run(async {
+                    // do stuff...
+                    Ok(())
+                }))
+                .unwrap();
         }
 
-        tests
-            .run_tests(async {
-                futures::future::join_all(jobs).await;
-            })
-            .await
-    }));
+        pool.run_until(tests.run_tests())
+    });
 }

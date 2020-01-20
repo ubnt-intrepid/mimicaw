@@ -10,9 +10,11 @@ authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+console = "0.9"
 futures = "0.3"
 futures-intrusive = "0.2"
 getopts = "0.2"
+indicatif = "0.13"
 
 [dev-dependencies]
 async-std = { version = "1", features = ["attributes"] }
