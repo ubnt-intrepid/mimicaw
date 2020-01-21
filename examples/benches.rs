@@ -1,54 +1,42 @@
-use futures::{executor::LocalPool, task::LocalSpawnExt};
+use futures::executor::block_on;
 use futures_timer::Delay;
-use mimi::{TestDriver, TestOptions};
+use mimi::{Test, TestDriver};
 use std::time::Duration;
 
 fn main() {
-    std::process::exit({
+    std::process::exit(block_on(async {
         let mut driver = TestDriver::from_env();
-        let mut pool = LocalPool::new();
-        let spawner = pool.spawner();
 
-        if let Some(bench) = driver.add_test("bench1", TestOptions::bench()) {
-            spawner
-                .spawn_local(bench.run_bench(async {
-                    // do stuff...
-                    Delay::new(Duration::from_secs(4)).await;
-                    Ok((1274, 23))
-                }))
-                .unwrap();
-        }
+        driver.add_test(Test::bench("bench1", async {
+            // do stuff...
+            Delay::new(Duration::from_secs(4)).await;
+            Ok((1274, 23))
+        }));
 
-        if let Some(bench) = driver.add_test("bench2", TestOptions::bench().ignored(true)) {
-            spawner
-                .spawn_local(bench.run_bench(async {
-                    // do stuff...
-                    Delay::new(Duration::from_secs(8)).await;
-                    Ok((23, 430))
-                }))
-                .unwrap();
-        }
+        driver.add_test(
+            Test::bench("bench2", async {
+                // do stuff...
+                Delay::new(Duration::from_secs(8)).await;
+                Ok((23, 430))
+            })
+            .ignored(true),
+        );
 
-        if let Some(test) = driver.add_test("test1", TestOptions::test()) {
-            spawner
-                .spawn_local(test.run_test(async {
-                    // do stuff...
-                    Delay::new(Duration::from_secs(2)).await;
-                    Ok(())
-                }))
-                .unwrap();
-        }
+        driver.add_test(Test::test("test1", async {
+            // do stuff...
+            Delay::new(Duration::from_secs(2)).await;
+            Ok(())
+        }));
 
-        if let Some(test) = driver.add_test("test2", TestOptions::test().ignored(true)) {
-            spawner
-                .spawn_local(test.run_test(async {
-                    // do stuff...
-                    Delay::new(Duration::from_secs(6)).await;
-                    Ok(())
-                }))
-                .unwrap();
-        }
+        driver.add_test(
+            Test::test("test2", async {
+                // do stuff...
+                Delay::new(Duration::from_secs(6)).await;
+                Ok(())
+            })
+            .ignored(true),
+        );
 
-        pool.run_until(driver.run_tests())
-    });
+        driver.run_tests().await
+    }));
 }

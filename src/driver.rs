@@ -1,16 +1,57 @@
 use crate::{
     args::Args,
-    test::{Handle, Outcome, TestCase, TestKind, TestOptions},
+    test::{Outcome, Test, TestKind},
 };
-use futures::channel::oneshot;
+use futures::{
+    channel::oneshot,
+    future::Future,
+    stream::StreamExt,
+    task::{self, Poll},
+};
 use indexmap::IndexMap;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use std::sync::Arc;
+use pin_project_lite::pin_project;
+use std::{pin::Pin, sync::Arc};
 
-#[derive(Debug)]
+pin_project! {
+    struct RunningTest {
+        #[pin]
+        test: Test,
+        filtered: bool,
+        progress: ProgressBar,
+        outcome: Option<Outcome>,
+    }
+}
+
+impl Future for RunningTest {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
+        let me = self.project();
+        if *me.filtered {
+            me.progress
+                .finish_with_message(&console::style("ignored").yellow().to_string());
+            return Poll::Ready(());
+        }
+
+        me.progress.enable_steady_tick(100);
+        me.progress.set_message("running");
+
+        let outcome = futures::ready!(me.test.test_case().poll(cx));
+        me.progress.finish_with_message(&match outcome {
+            Outcome::Passed => console::style("passed").green().to_string(),
+            Outcome::Failed { .. } => console::style("failed").red().to_string(),
+            Outcome::Measured { .. } => console::style("measured").green().to_string(),
+        });
+        me.outcome.replace(outcome);
+
+        Poll::Ready(())
+    }
+}
+
 pub struct TestDriver {
     args: Args,
-    pending_tests: IndexMap<Arc<String>, TestCase>,
+    pending_tests: IndexMap<Arc<String>, Test>,
 }
 
 impl TestDriver {
@@ -30,49 +71,13 @@ impl TestDriver {
         }
     }
 
-    fn is_filtered(&self, name: &str) -> bool {
-        if let Some(ref filter) = self.args.filter {
-            if self.args.filter_exact && name != filter {
-                return true;
-            }
-            if !name.contains(filter) {
-                return true;
-            }
-        }
-
-        for skip_filter in &self.args.skip {
-            if self.args.filter_exact && name != skip_filter {
-                return true;
-            }
-            if !name.contains(skip_filter) {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    /// Register a single test to the suite.
-    ///
-    /// This method will return a handle if the specified test needs
-    /// to be driven.
-    pub fn add_test(&mut self, name: &str, opts: TestOptions) -> Option<Handle> {
-        let name = Arc::new(name.to_string());
+    pub fn add_test(&mut self, test: Test) {
+        let name = test.name().clone();
         assert!(
             !self.pending_tests.contains_key(&*name),
             "the test name is duplicated"
         );
-
-        let is_target_mode = match opts.kind {
-            TestKind::Test => self.args.run_tests,
-            TestKind::Bench => self.args.run_benchmarks,
-        };
-        let filtered = opts.ignored || !is_target_mode || self.is_filtered(&*name);
-        let filtered = filtered ^ self.args.run_ignored;
-
-        let (test, handle) = TestCase::new(&name, opts, filtered);
         self.pending_tests.insert(name, test);
-        handle
     }
 
     fn print_list(&self) {
@@ -82,7 +87,7 @@ impl TestDriver {
         let mut num_benches = 0;
 
         for test in self.pending_tests.values() {
-            let kind_str = match test.opts().kind {
+            let kind_str = match test.kind() {
                 TestKind::Test => {
                     num_tests += 1;
                     "test"
@@ -139,46 +144,50 @@ impl TestDriver {
                 name_max_length
             ));
 
-        let mut running_tests = vec![];
-        let mut filtered_tests = vec![];
+        let mut running_tests = Vec::with_capacity(self.pending_tests.len());
+        for (_, test) in self.pending_tests.drain(..) {
+            let is_target_mode = match test.kind() {
+                TestKind::Test => self.args.run_tests,
+                TestKind::Bench => self.args.run_benchmarks,
+            };
+            let filtered = test.ignored || !is_target_mode || self.args.is_filtered(&*test.name());
+            let filtered = filtered ^ self.args.run_ignored;
 
-        for (_name, mut test) in self.pending_tests.drain(..) {
             let progress = multi_progress.add(ProgressBar::new_spinner());
             progress.set_style(progress_style.clone());
             progress.set_prefix(&*test.name());
-            test.start(progress);
-
-            if !test.filtered() {
-                running_tests.push(test);
-            } else {
-                filtered_tests.push(test);
-            }
+            running_tests.push(RunningTest {
+                test,
+                filtered,
+                progress,
+                outcome: None,
+            });
         }
 
-        // TODO: await completion of test jobs.
-
-        {
+        let rx = {
             let (tx, rx) = oneshot::channel();
             std::thread::spawn(move || {
                 let res = multi_progress.join();
                 let _ = tx.send(res);
             });
-            rx.await.unwrap().unwrap();
-        }
-
-        futures::future::join_all(running_tests.iter_mut()).await;
+            rx
+        };
+        let run_tests = futures::stream::iter(running_tests.iter_mut()) //
+            .for_each_concurrent(1024, std::convert::identity);
+        let _ = futures::future::join(rx, run_tests).await;
 
         let mut passed_tests = vec![];
         let mut failed_tests = vec![];
         let mut benchmark_tests = vec![];
-        for mut test in running_tests {
-            match test.take_outcome() {
-                Outcome::Passed => passed_tests.push(test),
-                Outcome::Failed { msg } => failed_tests.push((test, msg)),
-                Outcome::Measured { average, variance } => {
-                    benchmark_tests.push((test, average, variance))
+        let mut ignored_tests = vec![];
+        for test in running_tests {
+            match test.outcome {
+                Some(Outcome::Passed) => passed_tests.push(test.test),
+                Some(Outcome::Failed { msg }) => failed_tests.push((test.test, msg)),
+                Some(Outcome::Measured { average, variance }) => {
+                    benchmark_tests.push((test.test, average, variance))
                 }
-                _ => (),
+                None => ignored_tests.push(test.test),
             }
         }
 
@@ -186,7 +195,7 @@ impl TestDriver {
         println!("======== SUMMARY ========");
         println!("PASSED: {}", passed_tests.len());
         println!("FAILED: {}", failed_tests.len());
-        println!("IGNORE: {}", filtered_tests.len());
+        println!("IGNORE: {}", ignored_tests.len());
         println!("BENCH:  {}", benchmark_tests.len());
 
         if failed_tests.is_empty() {

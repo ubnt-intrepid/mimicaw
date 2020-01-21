@@ -32,6 +32,28 @@ impl Args {
             }
         }
     }
+
+    pub(crate) fn is_filtered(&self, name: &str) -> bool {
+        if let Some(ref filter) = self.filter {
+            if self.filter_exact && name != filter {
+                return true;
+            }
+            if !name.contains(filter) {
+                return true;
+            }
+        }
+
+        for skip_filter in &self.skip {
+            if self.filter_exact && name != skip_filter {
+                return true;
+            }
+            if !name.contains(skip_filter) {
+                return true;
+            }
+        }
+
+        false
+    }
 }
 
 struct TestThreads(usize);
