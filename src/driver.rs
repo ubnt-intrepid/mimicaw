@@ -1,68 +1,11 @@
-use crate::args::Args;
-use console::style;
-use futures::{
-    channel::oneshot,
-    future::Future,
-    task::{self, Poll},
+use crate::{
+    args::Args,
+    test::{Handle, Outcome, TestCase, TestKind, TestOptions},
 };
+use futures::channel::oneshot;
 use indexmap::IndexMap;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use pin_project_lite::pin_project;
-use std::{pin::Pin, sync::Arc};
-
-/// A set of options for a test or a benchmark.
-#[derive(Copy, Clone, Debug, Default)]
-pub struct TestOptions {
-    ignored: bool,
-}
-
-impl TestOptions {
-    /// Create a new `TestOptions`.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Mark that the test will be ignored.
-    pub fn ignored(mut self, value: bool) -> Self {
-        self.ignored = value;
-        self
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-enum TestKind {
-    Test,
-    Bench,
-}
-
-pin_project! {
-    #[derive(Debug)]
-    struct TestCase {
-        name: Arc<String>,
-        kind: TestKind,
-        opts: TestOptions,
-        tx_progress: Option<oneshot::Sender<ProgressBar>>,
-        #[pin]
-        rx_outcome: Option<oneshot::Receiver<Outcome>>,
-        outcome: Option<Outcome>,
-    }
-}
-
-impl Future for TestCase {
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
-        let me = self.project();
-        let outcome = match me.rx_outcome.as_pin_mut() {
-            Some(rx_outcome) => {
-                futures::ready!(rx_outcome.poll(cx)).unwrap_or_else(|_| Outcome::Canceled)
-            }
-            None => Outcome::Ignored,
-        };
-        me.outcome.replace(outcome);
-        Poll::Ready(())
-    }
-}
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct TestDriver {
@@ -109,66 +52,33 @@ impl TestDriver {
         false
     }
 
-    fn add_test_inner(&mut self, name: &str, kind: TestKind, opts: TestOptions) -> Option<Handle> {
+    /// Register a single test to the suite.
+    ///
+    /// This method will return a handle if the specified test needs
+    /// to be driven.
+    pub fn add_test(&mut self, name: &str, opts: TestOptions) -> Option<Handle> {
         let name = Arc::new(name.to_string());
         assert!(
             !self.pending_tests.contains_key(&*name),
             "the test name is duplicated"
         );
 
-        let is_target_mode = match kind {
+        let is_target_mode = match opts.kind {
             TestKind::Test => self.args.run_tests,
             TestKind::Bench => self.args.run_benchmarks,
         };
         let filtered = opts.ignored || !is_target_mode || self.is_filtered(&*name);
         let filtered = filtered ^ self.args.run_ignored;
 
-        let (tx_progress, rx_outcome, handle) = if !filtered {
-            let (tx_progress, rx_progress) = oneshot::channel();
-            let (tx_outcome, rx_outcome) = oneshot::channel();
-            (
-                Some(tx_progress),
-                Some(rx_outcome),
-                Some(Handle {
-                    progress: rx_progress,
-                    outcome: tx_outcome,
-                }),
-            )
+        if !filtered {
+            let (test, handle) = TestCase::new(&name, opts);
+            self.pending_tests.insert(name, test);
+            Some(handle)
         } else {
-            (None, None, None)
-        };
-
-        self.pending_tests.insert(
-            name.clone(),
-            TestCase {
-                name,
-                kind,
-                opts,
-                tx_progress,
-                rx_outcome,
-                outcome: None,
-            },
-        );
-
-        handle
-    }
-
-    /// Register a single test to the suite.
-    ///
-    /// This method will return a handle if the specified test needs
-    /// to be driven.
-    pub fn add_test(&mut self, name: &str, opts: TestOptions) -> Option<Test> {
-        self.add_test_inner(name, TestKind::Test, opts) //
-            .map(Test)
-    }
-
-    /// Register a single benchmark test to the suite.
-    ///
-    /// This method will return a handle if the specified benchmark test needs
-    /// to be driven.
-    pub fn add_bench(&mut self, name: &str, opts: TestOptions) -> Option<Benchmark> {
-        self.add_test_inner(name, TestKind::Bench, opts)
-            .map(Benchmark)
+            let test = TestCase::filtered(&name, opts);
+            self.pending_tests.insert(name, test);
+            None
+        }
     }
 
     fn print_list(&self) {
@@ -178,7 +88,7 @@ impl TestDriver {
         let mut num_benches = 0;
 
         for test in self.pending_tests.values() {
-            let kind_str = match test.kind {
+            let kind_str = match test.opts.kind {
                 TestKind::Test => {
                     num_tests += 1;
                     "test"
@@ -188,7 +98,7 @@ impl TestDriver {
                     "benchmark"
                 }
             };
-            println!("{}: {}", test.name, kind_str);
+            println!("{}: {}", test.name(), kind_str);
         }
 
         if !quiet {
@@ -241,13 +151,11 @@ impl TestDriver {
         for (_name, mut test) in self.pending_tests.drain(..) {
             let progress = multi_progress.add(ProgressBar::new_spinner());
             progress.set_style(progress_style.clone());
-            progress.set_prefix(&*test.name);
+            progress.set_prefix(&*test.name());
 
-            if let Some(tx) = test.tx_progress.take() {
-                let _ = tx.send(progress);
+            if test.start(progress) {
                 running_tests.push(test);
             } else {
-                progress.finish_with_message(&style("ignored").yellow().to_string());
                 filtered_tests.push(test);
             }
         }
@@ -270,8 +178,7 @@ impl TestDriver {
         let mut benchmark_tests = vec![];
         let mut ignored_len = 0;
         for mut test in running_tests {
-            let outcome = test.outcome.take().unwrap_or_else(|| Outcome::Canceled);
-            match outcome {
+            match test.take_outcome() {
                 Outcome::Passed => passed_tests.push(test),
                 Outcome::Failed { msg } => failed_tests.push((test, msg)),
                 Outcome::Measured { average, variance } => {
@@ -295,96 +202,4 @@ impl TestDriver {
             crate::ERROR_STATUS_CODE
         }
     }
-}
-
-#[derive(Debug)]
-struct Handle {
-    progress: oneshot::Receiver<ProgressBar>,
-    outcome: oneshot::Sender<Outcome>,
-}
-
-impl Handle {
-    async fn run<Fut>(self, fut: Fut)
-    where
-        Fut: Future<Output = Outcome>,
-    {
-        let progress = self.progress.await.unwrap();
-        progress.enable_steady_tick(100);
-        progress.set_message("running");
-
-        let outcome = fut.await;
-        match outcome {
-            Outcome::Passed => {
-                progress.finish_with_message(&style("passed").green().to_string());
-            }
-            Outcome::Failed { .. } => {
-                progress.finish_with_message(&style("failed").red().bold().to_string());
-            }
-            Outcome::Measured { .. } => {
-                progress.finish_with_message(&style("finished").green().to_string());
-            }
-            _ => (),
-        };
-
-        let _ = self.outcome.send(outcome);
-    }
-}
-
-/// The handle to a test.
-#[derive(Debug)]
-pub struct Test(Handle);
-
-impl Test {
-    /// Wrap a future to catch events from the test suite.
-    pub async fn run<Fut>(self, test_case: Fut)
-    where
-        Fut: Future<Output = Result<(), Option<String>>>,
-    {
-        self.0
-            .run(async {
-                match test_case.await {
-                    Ok(()) => Outcome::Passed,
-                    Err(msg) => Outcome::Failed { msg },
-                }
-            })
-            .await
-    }
-}
-
-/// The handle to a benchmark test.
-#[derive(Debug)]
-pub struct Benchmark(Handle);
-
-impl Benchmark {
-    /// Wrap a future to catch events from the test suite.
-    pub async fn run<Fut>(self, test_case: Fut)
-    where
-        Fut: Future<Output = Result<(u64, u64), Option<String>>>,
-    {
-        self.0
-            .run(async {
-                match test_case.await {
-                    Ok((average, variance)) => Outcome::Measured { average, variance },
-                    Err(msg) => Outcome::Failed { msg },
-                }
-            })
-            .await
-    }
-}
-
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum Outcome {
-    Passed,
-    Failed {
-        msg: Option<String>,
-    },
-    Ignored,
-    Measured {
-        average: u64,
-        variance: u64,
-    },
-
-    #[doc(hidden)]
-    Canceled,
 }

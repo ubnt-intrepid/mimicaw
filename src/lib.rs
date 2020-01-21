@@ -2,7 +2,11 @@
 
 mod args;
 mod driver;
+mod test;
 
-pub use crate::driver::{Benchmark, Test, TestDriver, TestOptions};
+pub use crate::{
+    driver::TestDriver,
+    test::{Handle, TestOptions},
+};
 
 const ERROR_STATUS_CODE: i32 = 101;
