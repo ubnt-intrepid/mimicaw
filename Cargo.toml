@@ -12,9 +12,7 @@ edition = "2018"
 [dependencies]
 console = "0.9"
 futures = "0.3"
-futures-intrusive = "0.2"
 getopts = "0.2"
-indexmap = "1"
 indicatif = "0.13"
 pin-project-lite = "0.1"
 

@@ -8,17 +8,16 @@ use futures::{
     stream::StreamExt,
     task::{self, Poll},
 };
-use indexmap::IndexMap;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use pin_project_lite::pin_project;
-use std::{pin::Pin, sync::Arc};
+use std::{collections::HashSet, pin::Pin};
 
 pin_project! {
     struct RunningTest {
         #[pin]
         test: Test,
         filtered: bool,
-        progress: ProgressBar,
+        progress: Option<ProgressBar>,
         outcome: Option<Outcome>,
     }
 }
@@ -28,17 +27,17 @@ impl Future for RunningTest {
 
     fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
         let me = self.project();
+        let progress = me.progress.as_ref().expect("progress bar is not set");
         if *me.filtered {
-            me.progress
-                .finish_with_message(&console::style("ignored").yellow().to_string());
+            progress.finish_with_message(&console::style("ignored").yellow().to_string());
             return Poll::Ready(());
         }
 
-        me.progress.enable_steady_tick(100);
-        me.progress.set_message("running");
+        progress.enable_steady_tick(100);
+        progress.set_message("running");
 
         let outcome = futures::ready!(me.test.test_case().poll(cx));
-        me.progress.finish_with_message(&match outcome {
+        progress.finish_with_message(&match outcome {
             Outcome::Passed => console::style("passed").green().to_string(),
             Outcome::Failed { .. } => console::style("failed").red().to_string(),
             Outcome::Measured { .. } => console::style("measured").green().to_string(),
@@ -51,17 +50,13 @@ impl Future for RunningTest {
 
 pub struct TestDriver {
     args: Args,
-    pending_tests: IndexMap<Arc<String>, Test>,
 }
 
 impl TestDriver {
     /// Create a test suite.
     pub fn from_env() -> Self {
         match Args::from_env() {
-            Ok(args) => Self {
-                args,
-                pending_tests: IndexMap::new(),
-            },
+            Ok(args) => Self { args },
             Err(code) => {
                 // The process should not be exited at here
                 // in order for the resources in main function to
@@ -71,22 +66,13 @@ impl TestDriver {
         }
     }
 
-    pub fn add_test(&mut self, test: Test) {
-        let name = test.name().clone();
-        assert!(
-            !self.pending_tests.contains_key(&*name),
-            "the test name is duplicated"
-        );
-        self.pending_tests.insert(name, test);
-    }
-
-    fn print_list(&self) {
+    fn print_list(&self, tests: impl IntoIterator<Item = Test>) {
         let quiet = self.args.format == crate::args::OutputFormat::Terse;
 
         let mut num_tests = 0;
         let mut num_benches = 0;
 
-        for test in self.pending_tests.values() {
+        for test in tests {
             let kind_str = match test.kind() {
                 TestKind::Test => {
                     num_tests += 1;
@@ -122,30 +108,26 @@ impl TestDriver {
     }
 
     /// Run the test suite and aggregate the results.
-    pub async fn run_tests(&mut self) -> i32 {
+    pub async fn run_tests<I>(&mut self, tests: I) -> i32
+    where
+        I: IntoIterator<Item = Test>,
+    {
         if self.args.list {
-            self.print_list();
+            self.print_list(tests);
             return 0;
         }
 
-        println!("======== RUNNING TESTS ========");
+        let mut running_tests = vec![];
+        let mut test_names = HashSet::new();
+        let mut max_name_length = 0;
 
-        let name_max_length = self
-            .pending_tests
-            .keys()
-            .map(|key| key.len())
-            .max()
-            .unwrap_or(0);
+        for test in tests {
+            if !test_names.insert(test.name().clone()) {
+                panic!("the test name is conflicted");
+            }
 
-        let multi_progress = MultiProgress::new();
-        let progress_style = ProgressStyle::default_spinner() //
-            .template(&format!(
-                "{{prefix:{}.bold.dim}} {{spinner}} {{wide_msg}}",
-                name_max_length
-            ));
+            max_name_length = std::cmp::max(max_name_length, test.name().len());
 
-        let mut running_tests = Vec::with_capacity(self.pending_tests.len());
-        for (_, test) in self.pending_tests.drain(..) {
             let is_target_mode = match test.kind() {
                 TestKind::Test => self.args.run_tests,
                 TestKind::Bench => self.args.run_benchmarks,
@@ -153,28 +135,40 @@ impl TestDriver {
             let filtered = test.ignored || !is_target_mode || self.args.is_filtered(&*test.name());
             let filtered = filtered ^ self.args.run_ignored;
 
-            let progress = multi_progress.add(ProgressBar::new_spinner());
-            progress.set_style(progress_style.clone());
-            progress.set_prefix(&*test.name());
             running_tests.push(RunningTest {
                 test,
                 filtered,
-                progress,
+                progress: None,
                 outcome: None,
             });
         }
 
-        let rx = {
+        println!("======== RUNNING TESTS ========");
+        let multi_progress = MultiProgress::new();
+        let progress_style = ProgressStyle::default_spinner() //
+            .template(&format!(
+                "{{prefix:{}.bold.dim}} {{spinner}} {{wide_msg}}",
+                max_name_length,
+            ));
+        running_tests.iter_mut().for_each(|test| {
+            let progress = multi_progress.add(ProgressBar::new_spinner());
+            progress.set_prefix(&*test.test.name());
+            progress.set_style(progress_style.clone());
+            test.progress.replace(progress);
+        });
+
+        let run_tests = futures::stream::iter(running_tests.iter_mut()) //
+            .for_each_concurrent(1024, std::convert::identity);
+
+        let complete_progress = {
             let (tx, rx) = oneshot::channel();
             std::thread::spawn(move || {
                 let res = multi_progress.join();
                 let _ = tx.send(res);
             });
-            rx
+            async move { rx.await.unwrap().unwrap() }
         };
-        let run_tests = futures::stream::iter(running_tests.iter_mut()) //
-            .for_each_concurrent(1024, std::convert::identity);
-        let _ = futures::future::join(rx, run_tests).await;
+        let _ = futures::future::join(run_tests, complete_progress).await;
 
         let mut passed_tests = vec![];
         let mut failed_tests = vec![];
