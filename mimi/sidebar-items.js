@@ -1,1 +1,1 @@
-initSidebarItems({"struct":[["Handle","The handle to a test."],["TestDriver",""],["TestOptions","A set of options for a test or a benchmark."]]});
+initSidebarItems({"struct":[["Test","The context object that tracks the progress of a test case."],["TestDriver",""]]});
