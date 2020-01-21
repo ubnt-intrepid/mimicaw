@@ -48,7 +48,8 @@ pin_project! {
     #[derive(Debug)]
     pub(crate) struct TestCase {
         name: Arc<String>,
-        pub(crate) opts: TestOptions,
+        opts: TestOptions,
+        filtered: bool,
         tx_progress: Option<oneshot::Sender<ProgressBar>>,
         #[pin]
         rx_outcome: Option<oneshot::Receiver<Outcome>>,
@@ -57,33 +58,40 @@ pin_project! {
 }
 
 impl TestCase {
-    pub(crate) fn new(name: &Arc<String>, opts: TestOptions) -> (Self, Handle) {
-        let (tx_progress, rx_progress) = oneshot::channel();
-        let (tx_outcome, rx_outcome) = oneshot::channel();
+    pub(crate) fn new(
+        name: &Arc<String>,
+        opts: TestOptions,
+        filtered: bool,
+    ) -> (Self, Option<Handle>) {
+        if !filtered {
+            let (tx_progress, rx_progress) = oneshot::channel();
+            let (tx_outcome, rx_outcome) = oneshot::channel();
 
-        let test = Self {
-            name: name.clone(),
-            opts,
-            tx_progress: Some(tx_progress),
-            rx_outcome: Some(rx_outcome),
-            outcome: None,
-        };
+            let test = Self {
+                name: name.clone(),
+                opts,
+                filtered,
+                tx_progress: Some(tx_progress),
+                rx_outcome: Some(rx_outcome),
+                outcome: None,
+            };
 
-        let handle = Handle {
-            progress: rx_progress,
-            outcome: tx_outcome,
-        };
+            let handle = Handle {
+                progress: rx_progress,
+                outcome: tx_outcome,
+            };
 
-        (test, handle)
-    }
-
-    pub(crate) fn filtered(name: &Arc<String>, opts: TestOptions) -> Self {
-        Self {
-            name: name.clone(),
-            opts,
-            tx_progress: None,
-            rx_outcome: None,
-            outcome: None,
+            (test, Some(handle))
+        } else {
+            let test = Self {
+                name: name.clone(),
+                opts,
+                filtered,
+                tx_progress: None,
+                rx_outcome: None,
+                outcome: None,
+            };
+            (test, None)
         }
     }
 
@@ -91,13 +99,21 @@ impl TestCase {
         &self.name
     }
 
-    pub(crate) fn start(&mut self, progress: ProgressBar) -> bool {
+    pub(crate) fn filtered(&self) -> bool {
+        self.filtered
+    }
+
+    pub(crate) fn opts(&self) -> &TestOptions {
+        &self.opts
+    }
+
+    pub(crate) fn start(&mut self, progress: ProgressBar) {
         if let Some(tx) = self.tx_progress.take() {
+            progress.enable_steady_tick(100);
+            progress.set_message("running");
             let _ = tx.send(progress);
-            true
         } else {
             progress.finish_with_message(&console::style("ignored").yellow().to_string());
-            false
         }
     }
 
@@ -135,8 +151,6 @@ impl Handle {
         Fut: Future<Output = Outcome>,
     {
         let progress = self.progress.await.unwrap();
-        progress.enable_steady_tick(100);
-        progress.set_message("running");
 
         let outcome = fut.await;
         match outcome {
@@ -146,8 +160,15 @@ impl Handle {
             Outcome::Failed { .. } => {
                 progress.finish_with_message(&console::style("failed").red().bold().to_string());
             }
-            Outcome::Measured { .. } => {
-                progress.finish_with_message(&console::style("finished").green().to_string());
+            Outcome::Measured { average, variance } => {
+                progress.finish_with_message(
+                    &console::style(&format!(
+                        "finished: average={}, variance={}",
+                        average, variance
+                    ))
+                    .green()
+                    .to_string(),
+                );
             }
             _ => (),
         };

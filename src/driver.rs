@@ -70,15 +70,9 @@ impl TestDriver {
         let filtered = opts.ignored || !is_target_mode || self.is_filtered(&*name);
         let filtered = filtered ^ self.args.run_ignored;
 
-        if !filtered {
-            let (test, handle) = TestCase::new(&name, opts);
-            self.pending_tests.insert(name, test);
-            Some(handle)
-        } else {
-            let test = TestCase::filtered(&name, opts);
-            self.pending_tests.insert(name, test);
-            None
-        }
+        let (test, handle) = TestCase::new(&name, opts, filtered);
+        self.pending_tests.insert(name, test);
+        handle
     }
 
     fn print_list(&self) {
@@ -88,7 +82,7 @@ impl TestDriver {
         let mut num_benches = 0;
 
         for test in self.pending_tests.values() {
-            let kind_str = match test.opts.kind {
+            let kind_str = match test.opts().kind {
                 TestKind::Test => {
                     num_tests += 1;
                     "test"
@@ -152,8 +146,9 @@ impl TestDriver {
             let progress = multi_progress.add(ProgressBar::new_spinner());
             progress.set_style(progress_style.clone());
             progress.set_prefix(&*test.name());
+            test.start(progress);
 
-            if test.start(progress) {
+            if !test.filtered() {
                 running_tests.push(test);
             } else {
                 filtered_tests.push(test);
@@ -176,7 +171,6 @@ impl TestDriver {
         let mut passed_tests = vec![];
         let mut failed_tests = vec![];
         let mut benchmark_tests = vec![];
-        let mut ignored_len = 0;
         for mut test in running_tests {
             match test.take_outcome() {
                 Outcome::Passed => passed_tests.push(test),
@@ -184,7 +178,6 @@ impl TestDriver {
                 Outcome::Measured { average, variance } => {
                     benchmark_tests.push((test, average, variance))
                 }
-                Outcome::Ignored => ignored_len += 1,
                 _ => (),
             }
         }
@@ -193,7 +186,7 @@ impl TestDriver {
         println!("======== SUMMARY ========");
         println!("PASSED: {}", passed_tests.len());
         println!("FAILED: {}", failed_tests.len());
-        println!("IGNORE: {}", ignored_len);
+        println!("IGNORE: {}", filtered_tests.len());
         println!("BENCH:  {}", benchmark_tests.len());
 
         if failed_tests.is_empty() {
