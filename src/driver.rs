@@ -12,30 +12,33 @@ use pin_project_lite::pin_project;
 use std::{collections::HashSet, pin::Pin};
 
 pin_project! {
-    struct RunningTest {
-        #[pin]
-        test: Test,
+    struct RunningTest<D, R> {
+        test: Test<D>,
         filtered: bool,
-        progress: Option<Progress>,
+        #[pin]
+        test_case: R,
+        progress: Progress,
         outcome: Option<Outcome>,
     }
 }
 
-impl Future for RunningTest {
+impl<D, R> Future for RunningTest<D, R>
+where
+    R: Future<Output = Outcome>,
+{
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
         let me = self.project();
-        let progress = me.progress.as_ref().expect("progress bar is not set");
         if *me.filtered {
-            progress.finish(None);
+            me.progress.finish(None);
             return Poll::Ready(());
         }
 
-        progress.set_running();
+        me.progress.set_running();
 
-        let outcome = futures::ready!(me.test.test_case().poll(cx));
-        progress.finish(Some(&outcome));
+        let outcome = futures::ready!(me.test_case.poll(cx));
+        me.progress.finish(Some(&outcome));
         me.outcome.replace(outcome);
 
         Poll::Ready(())
@@ -60,7 +63,7 @@ impl TestDriver {
         }
     }
 
-    fn print_list(&self, tests: impl IntoIterator<Item = Test>) {
+    fn print_list<D>(&self, tests: impl IntoIterator<Item = Test<D>>) {
         let quiet = self.args.format == crate::args::OutputFormat::Terse;
 
         let mut num_tests = 0;
@@ -102,10 +105,14 @@ impl TestDriver {
     }
 
     /// Run the test suite and aggregate the results.
-    pub async fn run_tests<I>(&mut self, tests: I) -> i32
+    pub async fn run_tests<D, I, F, R>(&mut self, tests: I, runner: F) -> i32
     where
-        I: IntoIterator<Item = Test>,
+        I: IntoIterator<Item = Test<D>>,
+        F: FnMut(D) -> R,
+        R: Future<Output = Outcome> + Unpin,
     {
+        let mut runner = runner;
+
         if self.args.list {
             self.print_list(tests);
             return 0;
@@ -126,23 +133,30 @@ impl TestDriver {
                 TestKind::Test => self.args.run_tests,
                 TestKind::Bench => self.args.run_benchmarks,
             };
-            let filtered = test.ignored || !is_target_mode || self.args.is_filtered(&*test.name());
+            let filtered =
+                test.ignored() || !is_target_mode || self.args.is_filtered(&*test.name());
             let filtered = filtered ^ self.args.run_ignored;
 
-            running_tests.push(RunningTest {
-                test,
-                filtered,
-                progress: None,
-                outcome: None,
-            });
+            running_tests.push((test, filtered));
         }
 
         println!("running {} tests", running_tests.len());
         let container = Container::new(max_name_length);
-        running_tests.iter_mut().for_each(|test| {
-            test.progress
-                .replace(container.add_progress(&*test.test.name()));
-        });
+
+        let mut running_tests: Vec<_> = running_tests
+            .into_iter()
+            .map(|(mut test, filtered)| {
+                let test_case = runner(test.take_context());
+                let progress = container.add_progress(&*test.name());
+                RunningTest {
+                    test,
+                    filtered,
+                    test_case,
+                    progress,
+                    outcome: None,
+                }
+            })
+            .collect();
 
         let run_tests = futures::stream::iter(running_tests.iter_mut()) //
             .for_each_concurrent(1024, std::convert::identity);

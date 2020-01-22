@@ -1,38 +1,40 @@
 use async_std::task;
+use futures::future::Future;
 use futures_timer::Delay;
-use mimicaw::Test;
-use std::time::Duration;
+use mimicaw::{Outcome, Test};
+use std::{pin::Pin, time::Duration};
 
 #[async_std::main]
 async fn main() {
     let tests = vec![
-        Test::test("case1", async {
+        Test::test("case1").context(Box::pin(async {
             task::spawn(async {
                 Delay::new(Duration::from_secs(8)).await;
                 // do stuff...
-                Ok(())
+                Outcome::Passed
             })
             .await
-        }),
-        Test::test("case2", async {
+        }) as Pin<Box<dyn Future<Output = Outcome>>>),
+        Test::test("case2").context(Box::pin(async {
             task::spawn(async {
                 Delay::new(Duration::from_secs(4)).await;
                 // do stuff...
-                Err(Some("foo".into()))
+                Outcome::Failed {
+                    msg: Some("foo".into()),
+                }
             })
             .await
-        }),
-        Test::test("case3", async {
+        })),
+        Test::test("case3").ignore(true).context(Box::pin(async {
             task::spawn(async move {
                 Delay::new(Duration::from_secs(6)).await;
                 // do stuff ...
-                Ok(())
+                Outcome::Passed
             })
             .await
-        })
-        .ignored(true),
+        })),
     ];
 
-    let status = mimicaw::run_tests(tests).await;
+    let status = mimicaw::run_tests(tests, std::convert::identity).await;
     std::process::exit(status);
 }

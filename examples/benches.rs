@@ -1,34 +1,40 @@
-use futures::executor::block_on;
+use futures::{executor::block_on, future::Future};
 use futures_timer::Delay;
-use mimicaw::Test;
-use std::time::Duration;
+use mimicaw::{Outcome, Test};
+use std::{pin::Pin, time::Duration};
 
 fn main() {
     let tests = vec![
-        Test::bench("bench1", async {
+        Test::bench("bench1").context(Box::pin(async {
             // do stuff...
             Delay::new(Duration::from_secs(4)).await;
-            Ok((1274, 23))
-        }),
-        Test::bench("bench2", async {
+            Outcome::Measured {
+                average: 1274,
+                variance: 23,
+            }
+        }) as Pin<Box<dyn Future<Output = Outcome>>>),
+        Test::bench("bench2").ignore(true).context(Box::pin(async {
             // do stuff...
             Delay::new(Duration::from_secs(8)).await;
-            Ok((23, 430))
-        })
-        .ignored(true),
-        Test::test("test1", async {
+            Outcome::Measured {
+                average: 23,
+                variance: 430,
+            }
+        })),
+        Test::test("test1").context(Box::pin(async {
             // do stuff...
             Delay::new(Duration::from_secs(2)).await;
-            Ok(())
-        }),
-        Test::test("test2", async {
-            // do stuff...
-            Delay::new(Duration::from_secs(6)).await;
-            Ok(())
-        })
-        .ignored(true),
+            Outcome::Passed
+        })),
+        Test::test("test2") //
+            .ignore(true)
+            .context(Box::pin(async {
+                // do stuff...
+                Delay::new(Duration::from_secs(6)).await;
+                Outcome::Passed
+            })),
     ];
 
-    let status = block_on(mimicaw::run_tests(tests));
+    let status = block_on(mimicaw::run_tests(tests, std::convert::identity));
     std::process::exit(status);
 }
