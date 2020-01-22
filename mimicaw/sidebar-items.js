@@ -1,1 +1,1 @@
-initSidebarItems({"fn":[["run_tests",""]],"struct":[["Test","The context object that tracks the progress of a test case."],["TestDriver",""]]});
+initSidebarItems({"fn":[["run_tests","Run a set of tests asynchronously."]],"struct":[["Outcome","The outcome of performing a test."],["Test","Data that describes a single test."],["TestDriver","The test driver."]]});
