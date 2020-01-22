@@ -1,5 +1,5 @@
 use crate::test::{Outcome, OutcomeKind};
-use futures::channel::oneshot;
+use futures_channel::oneshot;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use num_format::{Locale, ToFormattedString};
 

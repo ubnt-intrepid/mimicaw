@@ -1,9 +1,8 @@
 [package]
 name = "mimicaw"
 version = "0.0.0"
-publish = false
 description = """
-Minimal test harness that mimics libtest for asynchronous integration tests.
+A tiny test framework for asynchronous integration tests.
 """
 license = "MIT OR Apache-2.0"
 authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
@@ -11,7 +10,9 @@ edition = "2018"
 
 [dependencies]
 console = "0.9"
-futures = "0.3"
+futures-core = "0.3"
+futures-channel = "0.3"
+futures-util = { version = "0.3", features = [ "std" ], default-features = false }
 getopts = "0.2"
 indicatif = "0.13"
 num-format = "0.4"
@@ -20,5 +21,7 @@ pin-project-lite = "0.1"
 [dev-dependencies]
 async-std = { version = "1", features = ["attributes"] }
 cargo-husky = "1"
+futures = "0.3"
 futures-timer = "2"
+rand = "0.7"
 tokio = { version = "0.2.0", features = [ "full" ] }

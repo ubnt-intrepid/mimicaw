@@ -3,7 +3,7 @@
 </h1>
 <div align="center">
   <strong>
-    Minimal test harness that mimics <code>libtest</code> for asynchronous integration tests.
+    A tiny test framework for asynchronous integration tests.
   </strong>
 </div>
 
@@ -28,10 +28,9 @@
 </div>
 -->
 
-
 <br />
 
-This is a small test harness library for writing integration tests using the asynchronous runtime, such as `tokio` and `async-std`.
+`mimicow` is a tiny test library for writing asynchronous integration tests using the asynchronous runtime, such as `tokio` and `async-std`.
 The concept of this library is inspired from [`libtest-mimic`](https://github.com/LukasKalbertodt/libtest-mimic), but also focuses on
 the compatibility with `async`/`.await` language syntax.
 

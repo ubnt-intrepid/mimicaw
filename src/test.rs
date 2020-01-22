@@ -6,55 +6,16 @@ pub(crate) enum TestKind {
     Bench,
 }
 
-/// Data that describes a single test.
-pub struct Test<D = ()> {
+/// Description about a test.
+#[derive(Debug, Clone)]
+pub struct TestDesc {
     name: Arc<String>,
     kind: TestKind,
     ignored: bool,
-    context: Option<D>,
 }
 
-impl Test {
-    /// Create a single test.
-    pub fn test(name: &str) -> Self {
-        Self::new(name, TestKind::Test)
-    }
-
-    /// Create a single benchmark test.
-    pub fn bench(name: &str) -> Self {
-        Self::new(name, TestKind::Bench)
-    }
-
-    fn new(name: &str, kind: TestKind) -> Self {
-        Self {
-            name: Arc::new(name.into()),
-            kind,
-            ignored: false,
-            context: None,
-        }
-    }
-}
-
-impl<D> Test<D> {
-    /// Specify the context value associated with this test.
-    pub fn context<T>(self, context: T) -> Test<T> {
-        Test {
-            name: self.name,
-            kind: self.kind,
-            ignored: self.ignored,
-            context: Some(context),
-        }
-    }
-
-    /// Mark that this test should be ignored.
-    pub fn ignore(self, value: bool) -> Self {
-        Self {
-            ignored: value,
-            ..self
-        }
-    }
-
-    pub(crate) fn name(&self) -> &Arc<String> {
+impl TestDesc {
+    pub(crate) fn name_arc(&self) -> &Arc<String> {
         &self.name
     }
 
@@ -62,14 +23,64 @@ impl<D> Test<D> {
         &self.kind
     }
 
-    pub(crate) fn ignored(&self) -> bool {
-        self.ignored
+    /// Return the name of test.
+    #[inline]
+    pub fn name(&self) -> &str {
+        &*self.name
     }
 
-    pub(crate) fn take_context(&mut self) -> D {
-        self.context
-            .take()
-            .expect("the context has already been taken")
+    /// Return whether the test is a benchmark or not.
+    #[inline]
+    pub fn is_bench(&self) -> bool {
+        match self.kind {
+            TestKind::Bench => true,
+            _ => false,
+        }
+    }
+
+    /// Return whether the test should be ignored or not.
+    #[inline]
+    pub fn ignored(&self) -> bool {
+        self.ignored
+    }
+}
+
+/// Data that describes a single test.
+pub struct Test<D> {
+    desc: TestDesc,
+    data: D,
+}
+
+impl<D> Test<D> {
+    /// Create a single test.
+    pub fn test(name: &str, data: D) -> Self {
+        Self::new(name, TestKind::Test, data)
+    }
+
+    /// Create a single benchmark test.
+    pub fn bench(name: &str, data: D) -> Self {
+        Self::new(name, TestKind::Bench, data)
+    }
+
+    fn new(name: &str, kind: TestKind, data: D) -> Self {
+        Self {
+            desc: TestDesc {
+                name: Arc::new(name.into()),
+                kind,
+                ignored: false,
+            },
+            data,
+        }
+    }
+
+    /// Mark that this test should be ignored.
+    pub fn ignore(mut self, value: bool) -> Self {
+        self.desc.ignored = value;
+        self
+    }
+
+    pub(crate) fn deconstruct(self) -> (TestDesc, D) {
+        (self.desc, self.data)
     }
 }
 

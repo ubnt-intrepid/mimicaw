@@ -1,28 +1,27 @@
-//! Minimal test harness that mimics libtest for asynchronous integration tests.
+//! A tiny test framework for asynchronous integration tests.
 
 mod args;
 mod driver;
 mod progress;
 mod test;
 
-pub use crate::{
-    driver::TestDriver,
-    test::{Outcome, Test},
-};
+pub use crate::test::{Outcome, Test, TestDesc};
+
+use crate::driver::TestDriver;
+use futures_core::future::Future;
 
 const ERROR_STATUS_CODE: i32 = 101;
 
-/// Run a set of tests asynchronously.
-///
-/// See [`TestDriver::run_tests`] for details.
-///
-/// [`TestDriver::run_tests`]: ./struct.TestDriver.html#method.run_tests
-pub async fn run_tests<D, I, F, R>(tests: I, runner: F) -> i32
+/// Run a set of tests.
+pub async fn run_tests<D, R>(
+    tests: impl IntoIterator<Item = Test<D>>,
+    runner: impl FnMut(&TestDesc, D) -> R,
+) -> i32
 where
-    I: IntoIterator<Item = Test<D>>,
-    F: FnMut(D) -> R,
-    R: std::future::Future<Output = Outcome> + Unpin,
+    R: Future<Output = Outcome> + Unpin,
 {
-    let mut driver = TestDriver::from_env();
-    driver.run_tests(tests, runner).await
+    match TestDriver::from_env() {
+        Ok(mut driver) => driver.run_tests(tests, runner).await,
+        Err(code) => code,
+    }
 }

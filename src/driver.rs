@@ -1,19 +1,20 @@
 use crate::{
     args::Args,
     progress::{Container, Progress},
-    test::{Outcome, OutcomeKind, Test, TestKind},
+    test::{Outcome, OutcomeKind, Test, TestDesc, TestKind},
 };
-use futures::{
+use futures_core::{
     future::Future,
-    stream::StreamExt,
     task::{self, Poll},
 };
+use futures_util::{ready, stream::StreamExt};
 use pin_project_lite::pin_project;
 use std::{collections::HashSet, pin::Pin};
 
 pin_project! {
     struct PendingTest<D, R> {
-        test: Test<D>,
+        desc: TestDesc,
+        context: Option<D>,
         #[pin]
         test_case: Option<R>,
         progress: Option<Progress>,
@@ -36,7 +37,7 @@ where
                     p.set_running();
                 }
 
-                let outcome = futures::ready!(test_case.poll(cx));
+                let outcome = ready!(test_case.poll(cx));
                 if let Some(p) = me.progress {
                     p.finish(Some(&outcome));
                 }
@@ -60,16 +61,10 @@ pub struct TestDriver {
 
 impl TestDriver {
     /// Create a test driver configured with the CLI options.
-    pub fn from_env() -> Self {
-        match Args::from_env() {
-            Ok(args) => Self { args },
-            Err(code) => {
-                // The process should not be exited at here
-                // in order for the resources in main function to
-                // be appropriately dropped.
-                std::process::exit(code);
-            }
-        }
+    pub fn from_env() -> Result<Self, i32> {
+        Ok(Self {
+            args: Args::from_env()?,
+        })
     }
 
     fn print_list<D, R>(&self, tests: &[PendingTest<D, R>]) {
@@ -79,7 +74,7 @@ impl TestDriver {
         let mut num_benches = 0;
 
         for test in tests {
-            let kind_str = match test.test.kind() {
+            let kind_str = match test.desc.kind() {
                 TestKind::Test => {
                     num_tests += 1;
                     "test"
@@ -89,7 +84,7 @@ impl TestDriver {
                     "benchmark"
                 }
             };
-            println!("{}: {}", test.test.name(), kind_str);
+            println!("{}: {}", test.desc.name(), kind_str);
         }
 
         if !quiet {
@@ -116,42 +111,44 @@ impl TestDriver {
     fn apply_filter<D, R>(
         &self,
         tests: impl IntoIterator<Item = Test<D>>,
-    ) -> (Vec<PendingTest<D, R>>, Vec<Test<D>>) {
+    ) -> (Vec<PendingTest<D, R>>, usize) {
         let mut pending_tests = vec![];
-        let mut filtered_tests = vec![];
+        let mut num_filtered_out = 0;
         let mut test_names = HashSet::new();
 
         for test in tests {
-            if !test_names.insert(test.name().clone()) {
+            let (desc, context) = test.deconstruct();
+            if !test_names.insert(desc.name_arc().clone()) {
                 panic!("the test name is conflicted");
             }
 
-            if self.args.is_filtered(&*test.name()) {
-                filtered_tests.push(test);
+            if self.args.is_filtered(desc.name()) {
+                num_filtered_out += 1;
                 continue;
             }
 
             pending_tests.push(PendingTest {
-                test,
+                desc,
+                context: Some(context),
                 test_case: None,
                 progress: None,
                 outcome: None,
             });
         }
 
-        (pending_tests, filtered_tests)
+        (pending_tests, num_filtered_out)
     }
 
     /// Run a set of tests using the specified test runner.
     pub async fn run_tests<D, I, F, R>(&mut self, tests: I, runner: F) -> i32
     where
         I: IntoIterator<Item = Test<D>>,
-        F: FnMut(D) -> R,
+        F: FnMut(&TestDesc, D) -> R,
         R: Future<Output = Outcome> + Unpin,
     {
         let mut runner = runner;
 
-        let (mut pending_tests, filtered_out_tests) = self.apply_filter(tests);
+        let (mut pending_tests, num_filtered_out) = self.apply_filter(tests);
 
         if self.args.list {
             self.print_list(&pending_tests);
@@ -162,28 +159,33 @@ impl TestDriver {
 
         let max_name_length = pending_tests
             .iter()
-            .map(|test| test.test.name().len())
+            .map(|test| test.desc.name().len())
             .max()
             .unwrap_or(0);
         let container = Container::new(max_name_length);
 
         for test in &mut pending_tests {
-            let ignored = (test.test.ignored() && !self.args.run_ignored)
-                || match test.test.kind() {
+            let ignored = (test.desc.ignored() && !self.args.run_ignored)
+                || match test.desc.kind() {
                     TestKind::Test => !self.args.run_tests,
                     TestKind::Bench => !self.args.run_benchmarks,
                 };
+
+            let context = test
+                .context
+                .take()
+                .expect("the context has already been used");
             if !ignored {
-                test.test_case.replace(runner(test.test.take_context()));
+                test.test_case.replace(runner(&test.desc, context));
             }
             test.progress
-                .replace(container.add_progress(&*test.test.name()));
+                .replace(container.add_progress(&*test.desc.name()));
         }
 
-        let run_tests = futures::stream::iter(pending_tests.iter_mut()) //
+        let run_tests = futures_util::stream::iter(pending_tests.iter_mut()) //
             .for_each_concurrent(None, std::convert::identity);
         let complete_progress = container.join();
-        let _ = futures::future::join(run_tests, complete_progress).await;
+        let _ = futures_util::future::join(run_tests, complete_progress).await;
 
         let mut num_passed = 0;
         let mut failed_tests = vec![];
@@ -194,7 +196,7 @@ impl TestDriver {
                 Some(outcome) => match outcome.kind() {
                     OutcomeKind::Passed => num_passed += 1,
                     OutcomeKind::Failed => {
-                        failed_tests.push((test.test.name().clone(), outcome.err_msg()))
+                        failed_tests.push((test.desc.name_arc().clone(), outcome.err_msg()))
                     }
                     OutcomeKind::Measured { .. } => num_measured += 1,
                 },
@@ -222,7 +224,7 @@ impl TestDriver {
             failed = failed_tests.len(),
             ignored = num_ignored,
             measured = num_measured,
-            filtered_out = filtered_out_tests.len(),
+            filtered_out = num_filtered_out,
         );
 
         if failed_tests.is_empty() {
