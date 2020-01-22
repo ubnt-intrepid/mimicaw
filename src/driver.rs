@@ -1,14 +1,13 @@
 use crate::{
     args::Args,
+    progress::{Container, Progress},
     test::{Outcome, Test, TestKind},
 };
 use futures::{
-    channel::oneshot,
     future::Future,
     stream::StreamExt,
     task::{self, Poll},
 };
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use pin_project_lite::pin_project;
 use std::{collections::HashSet, pin::Pin};
 
@@ -17,7 +16,7 @@ pin_project! {
         #[pin]
         test: Test,
         filtered: bool,
-        progress: Option<ProgressBar>,
+        progress: Option<Progress>,
         outcome: Option<Outcome>,
     }
 }
@@ -29,19 +28,14 @@ impl Future for RunningTest {
         let me = self.project();
         let progress = me.progress.as_ref().expect("progress bar is not set");
         if *me.filtered {
-            progress.finish_with_message(&console::style("ignored").yellow().to_string());
+            progress.finish(None);
             return Poll::Ready(());
         }
 
-        progress.enable_steady_tick(100);
-        progress.set_message("running");
+        progress.set_running();
 
         let outcome = futures::ready!(me.test.test_case().poll(cx));
-        progress.finish_with_message(&match outcome {
-            Outcome::Passed => console::style("passed").green().to_string(),
-            Outcome::Failed { .. } => console::style("failed").red().to_string(),
-            Outcome::Measured { .. } => console::style("measured").green().to_string(),
-        });
+        progress.finish(Some(&outcome));
         me.outcome.replace(outcome);
 
         Poll::Ready(())
@@ -143,31 +137,16 @@ impl TestDriver {
             });
         }
 
-        println!("======== RUNNING TESTS ========");
-        let multi_progress = MultiProgress::new();
-        let progress_style = ProgressStyle::default_spinner() //
-            .template(&format!(
-                "{{prefix:{}.bold.dim}} {{spinner}} {{wide_msg}}",
-                max_name_length,
-            ));
+        println!("running {} tests", running_tests.len());
+        let container = Container::new(max_name_length);
         running_tests.iter_mut().for_each(|test| {
-            let progress = multi_progress.add(ProgressBar::new_spinner());
-            progress.set_prefix(&*test.test.name());
-            progress.set_style(progress_style.clone());
-            test.progress.replace(progress);
+            test.progress
+                .replace(container.add_progress(&*test.test.name()));
         });
 
         let run_tests = futures::stream::iter(running_tests.iter_mut()) //
             .for_each_concurrent(1024, std::convert::identity);
-
-        let complete_progress = {
-            let (tx, rx) = oneshot::channel();
-            std::thread::spawn(move || {
-                let res = multi_progress.join();
-                let _ = tx.send(res);
-            });
-            async move { rx.await.unwrap().unwrap() }
-        };
+        let complete_progress = container.join();
         let _ = futures::future::join(run_tests, complete_progress).await;
 
         let mut passed_tests = vec![];
@@ -185,12 +164,20 @@ impl TestDriver {
             }
         }
 
+        let status = if failed_tests.is_empty() {
+            console::style("ok").green()
+        } else {
+            console::style("FAILED").red()
+        };
+
         println!();
-        println!("======== SUMMARY ========");
-        println!("PASSED: {}", passed_tests.len());
-        println!("FAILED: {}", failed_tests.len());
-        println!("IGNORE: {}", ignored_tests.len());
-        println!("BENCH:  {}", benchmark_tests.len());
+        println!("test result: {status}. {passed} passed; {failed} failed; {ignored} ignored; {measured} measured",
+            status = status,
+            passed = passed_tests.len(),
+            failed = failed_tests.len(),
+            ignored = ignored_tests.len(),
+            measured = benchmark_tests.len(),
+        );
 
         if failed_tests.is_empty() {
             0

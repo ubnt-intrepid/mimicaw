@@ -14,6 +14,7 @@ console = "0.9"
 futures = "0.3"
 getopts = "0.2"
 indicatif = "0.13"
+num-format = "0.4"
 pin-project-lite = "0.1"
 
 [dev-dependencies]
