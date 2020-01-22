@@ -200,7 +200,7 @@ impl Parser {
             .unwrap_or(binary);
 
         let message = format!("Usage: {} [OPTIONS] [FILTER]", progname);
-        println!(
+        eprintln!(
             r#"{usage}
     
     The FILTER string is tested against the name of all tests, and only those

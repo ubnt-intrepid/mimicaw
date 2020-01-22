@@ -2,7 +2,6 @@
 
 mod args;
 mod driver;
-mod progress;
 mod test;
 
 pub use crate::test::{Outcome, Test, TestDesc};

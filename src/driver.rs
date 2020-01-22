@@ -1,6 +1,5 @@
 use crate::{
     args::Args,
-    progress::{Container, Progress},
     test::{Outcome, OutcomeKind, Test, TestDesc, TestKind},
 };
 use futures_core::{
@@ -17,8 +16,8 @@ pin_project! {
         context: Option<D>,
         #[pin]
         test_case: Option<R>,
-        progress: Option<Progress>,
         outcome: Option<Outcome>,
+        name_length: usize,
     }
 }
 
@@ -33,20 +32,38 @@ where
 
         match me.test_case.as_pin_mut() {
             Some(test_case) => {
-                if let Some(p) = me.progress {
-                    p.set_running();
-                }
-
                 let outcome = ready!(test_case.poll(cx));
-                if let Some(p) = me.progress {
-                    p.finish(Some(&outcome));
+                match outcome.kind() {
+                    OutcomeKind::Passed => println!(
+                        "test {0:<1$} ... {2}",
+                        me.desc.name(),
+                        me.name_length,
+                        console::style("ok").green()
+                    ),
+                    OutcomeKind::Failed => println!(
+                        "test {0:<1$} ... {2}",
+                        me.desc.name(),
+                        me.name_length,
+                        console::style("FAILED").red()
+                    ),
+                    OutcomeKind::Measured { average, variance } => println!(
+                        "test {0:<1$} ... {2}: {3} nsec/iter (+/- {4})",
+                        me.desc.name(),
+                        me.name_length,
+                        console::style("bench").cyan(),
+                        average,
+                        variance
+                    ),
                 }
                 me.outcome.replace(outcome);
             }
             None => {
-                if let Some(p) = me.progress {
-                    p.finish(None);
-                }
+                println!(
+                    "test {0:<1$} ... {2}",
+                    me.desc.name(),
+                    me.name_length,
+                    console::style("ignored").yellow()
+                );
             }
         }
 
@@ -131,8 +148,8 @@ impl TestDriver {
                 desc,
                 context: Some(context),
                 test_case: None,
-                progress: None,
                 outcome: None,
+                name_length: 0,
             });
         }
 
@@ -162,7 +179,6 @@ impl TestDriver {
             .map(|test| test.desc.name().len())
             .max()
             .unwrap_or(0);
-        let container = Container::new(max_name_length);
 
         for test in &mut pending_tests {
             let ignored = (test.desc.ignored() && !self.args.run_ignored)
@@ -178,14 +194,12 @@ impl TestDriver {
             if !ignored {
                 test.test_case.replace(runner(&test.desc, context));
             }
-            test.progress
-                .replace(container.add_progress(&*test.desc.name()));
+            test.name_length = max_name_length;
         }
 
-        let run_tests = futures_util::stream::iter(pending_tests.iter_mut()) //
-            .for_each_concurrent(None, std::convert::identity);
-        let complete_progress = container.join();
-        let _ = futures_util::future::join(run_tests, complete_progress).await;
+        futures_util::stream::iter(pending_tests.iter_mut()) //
+            .for_each_concurrent(None, std::convert::identity)
+            .await;
 
         let mut num_passed = 0;
         let mut failed_tests = vec![];
