@@ -1,2 +1,2 @@
 var ALIASES = {};
-ALIASES["mimi"] = {};
+ALIASES["mimicaw"] = {};
