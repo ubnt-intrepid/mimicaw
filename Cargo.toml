@@ -1,12 +1,15 @@
 [package]
 name = "mimicaw"
-version = "0.0.0"
+version = "0.0.1"
 description = """
 A tiny test framework for asynchronous integration tests.
 """
 license = "MIT OR Apache-2.0"
-authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+authors = [ "Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>" ]
 edition = "2018"
+readme = "README.md"
+categories = [ "development-tools::testing" ]
+keywords = [ "test", "framework", "async" ]
 
 [dependencies]
 console = "0.9"
@@ -24,3 +27,4 @@ futures = "0.3"
 futures-timer = "2"
 rand = "0.7"
 tokio = { version = "0.2.0", features = [ "full" ] }
+version-sync = "0.8"

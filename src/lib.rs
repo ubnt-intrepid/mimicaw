@@ -1,5 +1,9 @@
 //! A tiny test framework for asynchronous integration tests.
 
+#![doc(html_root_url = "https://docs.rs/mimicaw/0.0.1")]
+#![deny(missing_docs)]
+#![forbid(clippy::unimplemented, clippy::todo)]
+
 mod args;
 mod driver;
 mod test;
@@ -23,4 +27,9 @@ where
         Ok(mut driver) => driver.run_tests(tests, runner).await,
         Err(code) => code,
     }
+}
+
+#[test]
+fn test_html_root_url() {
+    version_sync::assert_html_root_url_updated!("src/lib.rs");
 }

@@ -9,24 +9,24 @@
 
 <br />
 
-<!--
 <div align="center">
-  <a href="https://crates.io/crates/polyfuse">
-    <img src="https://img.shields.io/crates/v/polyfuse.svg?style=flat-square"
+  <a href="https://crates.io/crates/mimicaw">
+    <img src="https://img.shields.io/crates/v/mimicaw.svg?style=flat-square"
          alt="crates.io"
     />
   </a>
+  <!-- TODO: specify the minimum supported toolchain
   <a href="https://blog.rust-lang.org/2019/11/07/Rust-1.39.0.html">
     <img src="https://img.shields.io/badge/rust%20toolchain-1.39.0%2B-gray.svg?style=flat-square"
          alt="rust toolchain"
     />
   </a>
-  <a href="https://docs.rs/polyfuse">
+  -->
+  <a href="https://docs.rs/mimicaw">
     <img src="https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square"
          alt="docs.rs" />
   </a>
 </div>
--->
 
 <br />
 
