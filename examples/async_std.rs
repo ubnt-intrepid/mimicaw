@@ -1,6 +1,6 @@
 use async_std::task;
 use futures_timer::Delay;
-use mimi::Test;
+use mimicaw::Test;
 use std::time::Duration;
 
 #[async_std::main]
@@ -33,6 +33,6 @@ async fn main() {
         .ignored(true),
     ];
 
-    let status = mimi::run_tests(tests).await;
+    let status = mimicaw::run_tests(tests).await;
     std::process::exit(status);
 }

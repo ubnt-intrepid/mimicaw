@@ -1,5 +1,5 @@
 <h1 align="center">
-  <code>mimi</code>
+  <code>mimicaw</code>
 </h1>
 <div align="center">
   <strong>
@@ -31,7 +31,7 @@
 
 <br />
 
-`mimi` is a small test harness library for writing integration tests using the asynchronous runtime, such as `tokio` and `async-std`.
+This is a small test harness library for writing integration tests using the asynchronous runtime, such as `tokio` and `async-std`.
 The concept of this library is inspired from [`libtest-mimic`](https://github.com/LukasKalbertodt/libtest-mimic), but also focuses on
 the compatibility with `async`/`.await` language syntax.
 

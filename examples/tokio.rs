@@ -1,4 +1,4 @@
-use mimi::Test;
+use mimicaw::Test;
 use tokio::task;
 
 #[tokio::main]
@@ -31,6 +31,6 @@ async fn main() {
         .ignored(true),
     ];
 
-    let status = mimi::run_tests(tests).await;
+    let status = mimicaw::run_tests(tests).await;
     std::process::exit(status);
 }

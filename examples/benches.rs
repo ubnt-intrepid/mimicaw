@@ -1,6 +1,6 @@
 use futures::executor::block_on;
 use futures_timer::Delay;
-use mimi::Test;
+use mimicaw::Test;
 use std::time::Duration;
 
 fn main() {
@@ -29,6 +29,6 @@ fn main() {
         .ignored(true),
     ];
 
-    let status = block_on(mimi::run_tests(tests));
+    let status = block_on(mimicaw::run_tests(tests));
     std::process::exit(status);
 }
