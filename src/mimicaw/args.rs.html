@@ -477,7 +477,7 @@
             .<span class="ident">unwrap_or</span>(<span class="ident">binary</span>);
 
         <span class="kw">let</span> <span class="ident">message</span> <span class="op">=</span> <span class="macro">format</span><span class="macro">!</span>(<span class="string">&quot;Usage: {} [OPTIONS] [FILTER]&quot;</span>, <span class="ident">progname</span>);
-        <span class="macro">println</span><span class="macro">!</span>(
+        <span class="macro">eprintln</span><span class="macro">!</span>(
             <span class="string">r#&quot;{usage}
     
     The FILTER string is tested against the name of all tests, and only those
