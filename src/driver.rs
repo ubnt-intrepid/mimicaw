@@ -12,16 +12,16 @@ use pin_project_lite::pin_project;
 use std::{collections::HashSet, pin::Pin};
 
 pin_project! {
-    struct RunningTest<D, R> {
+    struct PendingTest<D, R> {
         test: Test<D>,
         #[pin]
         test_case: Option<R>,
-        progress: Progress,
+        progress: Option<Progress>,
         outcome: Option<Outcome>,
     }
 }
 
-impl<D, R> Future for RunningTest<D, R>
+impl<D, R> Future for PendingTest<D, R>
 where
     R: Future<Output = Outcome>,
 {
@@ -32,14 +32,20 @@ where
 
         match me.test_case.as_pin_mut() {
             Some(test_case) => {
-                me.progress.set_running();
+                if let Some(p) = me.progress {
+                    p.set_running();
+                }
 
                 let outcome = futures::ready!(test_case.poll(cx));
-                me.progress.finish(Some(&outcome));
+                if let Some(p) = me.progress {
+                    p.finish(Some(&outcome));
+                }
                 me.outcome.replace(outcome);
             }
             None => {
-                me.progress.finish(None);
+                if let Some(p) = me.progress {
+                    p.finish(None);
+                }
             }
         }
 
@@ -66,14 +72,14 @@ impl TestDriver {
         }
     }
 
-    fn print_list<D>(&self, tests: impl IntoIterator<Item = Test<D>>) {
+    fn print_list<D, R>(&self, tests: &[PendingTest<D, R>]) {
         let quiet = self.args.format == crate::args::OutputFormat::Terse;
 
         let mut num_tests = 0;
         let mut num_benches = 0;
 
         for test in tests {
-            let kind_str = match test.kind() {
+            let kind_str = match test.test.kind() {
                 TestKind::Test => {
                     num_tests += 1;
                     "test"
@@ -83,7 +89,7 @@ impl TestDriver {
                     "benchmark"
                 }
             };
-            println!("{}: {}", test.name(), kind_str);
+            println!("{}: {}", test.test.name(), kind_str);
         }
 
         if !quiet {
@@ -107,10 +113,10 @@ impl TestDriver {
         }
     }
 
-    fn apply_filter<D>(
+    fn apply_filter<D, R>(
         &self,
         tests: impl IntoIterator<Item = Test<D>>,
-    ) -> (Vec<Test<D>>, Vec<Test<D>>) {
+    ) -> (Vec<PendingTest<D, R>>, Vec<Test<D>>) {
         let mut pending_tests = vec![];
         let mut filtered_tests = vec![];
         let mut test_names = HashSet::new();
@@ -125,7 +131,12 @@ impl TestDriver {
                 continue;
             }
 
-            pending_tests.push(test);
+            pending_tests.push(PendingTest {
+                test,
+                test_case: None,
+                progress: None,
+                outcome: None,
+            });
         }
 
         (pending_tests, filtered_tests)
@@ -140,10 +151,10 @@ impl TestDriver {
     {
         let mut runner = runner;
 
-        let (pending_tests, filtered_out_tests) = self.apply_filter(tests);
+        let (mut pending_tests, filtered_out_tests) = self.apply_filter(tests);
 
         if self.args.list {
-            self.print_list(pending_tests);
+            self.print_list(&pending_tests);
             return 0;
         }
 
@@ -151,41 +162,25 @@ impl TestDriver {
 
         let max_name_length = pending_tests
             .iter()
-            .map(|test| test.name().len())
+            .map(|test| test.test.name().len())
             .max()
             .unwrap_or(0);
         let container = Container::new(max_name_length);
 
-        let mut running_tests: Vec<_> = pending_tests
-            .into_iter()
-            .map(|mut test| {
-                let ignored = (test.ignored() && !self.args.run_ignored)
-                    || match test.kind() {
-                        TestKind::Test => !self.args.run_tests,
-                        TestKind::Bench => !self.args.run_benchmarks,
-                    };
+        for test in &mut pending_tests {
+            let ignored = (test.test.ignored() && !self.args.run_ignored)
+                || match test.test.kind() {
+                    TestKind::Test => !self.args.run_tests,
+                    TestKind::Bench => !self.args.run_benchmarks,
+                };
+            if !ignored {
+                test.test_case.replace(runner(test.test.take_context()));
+            }
+            test.progress
+                .replace(container.add_progress(&*test.test.name()));
+        }
 
-                let progress = container.add_progress(&*test.name());
-                if !ignored {
-                    let test_case = runner(test.take_context());
-                    RunningTest {
-                        test,
-                        test_case: Some(test_case),
-                        progress,
-                        outcome: None,
-                    }
-                } else {
-                    RunningTest {
-                        test,
-                        test_case: None,
-                        progress,
-                        outcome: None,
-                    }
-                }
-            })
-            .collect();
-
-        let run_tests = futures::stream::iter(running_tests.iter_mut()) //
+        let run_tests = futures::stream::iter(pending_tests.iter_mut()) //
             .for_each_concurrent(None, std::convert::identity);
         let complete_progress = container.join();
         let _ = futures::future::join(run_tests, complete_progress).await;
@@ -194,7 +189,7 @@ impl TestDriver {
         let mut failed_tests = vec![];
         let mut num_measured = 0;
         let mut num_ignored = 0;
-        for test in running_tests {
+        for test in pending_tests {
             match test.outcome {
                 Some(outcome) => match outcome.kind() {
                     OutcomeKind::Passed => num_passed += 1,
