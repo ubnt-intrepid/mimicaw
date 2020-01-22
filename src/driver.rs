@@ -14,9 +14,8 @@ use std::{collections::HashSet, pin::Pin};
 pin_project! {
     struct RunningTest<D, R> {
         test: Test<D>,
-        filtered: bool,
         #[pin]
-        test_case: R,
+        test_case: Option<R>,
         progress: Progress,
         outcome: Option<Outcome>,
     }
@@ -30,16 +29,19 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
         let me = self.project();
-        if *me.filtered {
-            me.progress.finish(None);
-            return Poll::Ready(());
+
+        match me.test_case.as_pin_mut() {
+            Some(test_case) => {
+                me.progress.set_running();
+
+                let outcome = futures::ready!(test_case.poll(cx));
+                me.progress.finish(Some(&outcome));
+                me.outcome.replace(outcome);
+            }
+            None => {
+                me.progress.finish(None);
+            }
         }
-
-        me.progress.set_running();
-
-        let outcome = futures::ready!(me.test_case.poll(cx));
-        me.progress.finish(Some(&outcome));
-        me.outcome.replace(outcome);
 
         Poll::Ready(())
     }
@@ -105,6 +107,30 @@ impl TestDriver {
         }
     }
 
+    fn apply_filter<D>(
+        &self,
+        tests: impl IntoIterator<Item = Test<D>>,
+    ) -> (Vec<Test<D>>, Vec<Test<D>>) {
+        let mut pending_tests = vec![];
+        let mut filtered_tests = vec![];
+        let mut test_names = HashSet::new();
+
+        for test in tests {
+            if !test_names.insert(test.name().clone()) {
+                panic!("the test name is conflicted");
+            }
+
+            if self.args.is_filtered(&*test.name()) {
+                filtered_tests.push(test);
+                continue;
+            }
+
+            pending_tests.push(test);
+        }
+
+        (pending_tests, filtered_tests)
+    }
+
     /// Run a set of tests using the specified test runner.
     pub async fn run_tests<D, I, F, R>(&mut self, tests: I, runner: F) -> i32
     where
@@ -114,47 +140,47 @@ impl TestDriver {
     {
         let mut runner = runner;
 
+        let (pending_tests, filtered_out_tests) = self.apply_filter(tests);
+
         if self.args.list {
-            self.print_list(tests);
+            self.print_list(pending_tests);
             return 0;
         }
 
-        let mut running_tests = vec![];
-        let mut test_names = HashSet::new();
-        let mut max_name_length = 0;
+        println!("running {} tests", pending_tests.len());
 
-        for test in tests {
-            if !test_names.insert(test.name().clone()) {
-                panic!("the test name is conflicted");
-            }
-
-            max_name_length = std::cmp::max(max_name_length, test.name().len());
-
-            let is_target_mode = match test.kind() {
-                TestKind::Test => self.args.run_tests,
-                TestKind::Bench => self.args.run_benchmarks,
-            };
-            let filtered =
-                test.ignored() || !is_target_mode || self.args.is_filtered(&*test.name());
-            let filtered = filtered ^ self.args.run_ignored;
-
-            running_tests.push((test, filtered));
-        }
-
-        println!("running {} tests", running_tests.len());
+        let max_name_length = pending_tests
+            .iter()
+            .map(|test| test.name().len())
+            .max()
+            .unwrap_or(0);
         let container = Container::new(max_name_length);
 
-        let mut running_tests: Vec<_> = running_tests
+        let mut running_tests: Vec<_> = pending_tests
             .into_iter()
-            .map(|(mut test, filtered)| {
-                let test_case = runner(test.take_context());
+            .map(|mut test| {
+                let ignored = (test.ignored() && !self.args.run_ignored)
+                    || match test.kind() {
+                        TestKind::Test => !self.args.run_tests,
+                        TestKind::Bench => !self.args.run_benchmarks,
+                    };
+
                 let progress = container.add_progress(&*test.name());
-                RunningTest {
-                    test,
-                    filtered,
-                    test_case,
-                    progress,
-                    outcome: None,
+                if !ignored {
+                    let test_case = runner(test.take_context());
+                    RunningTest {
+                        test,
+                        test_case: Some(test_case),
+                        progress,
+                        outcome: None,
+                    }
+                } else {
+                    RunningTest {
+                        test,
+                        test_case: None,
+                        progress,
+                        outcome: None,
+                    }
                 }
             })
             .collect();
@@ -184,17 +210,24 @@ impl TestDriver {
         let mut status = console::style("ok").green();
         if !failed_tests.is_empty() {
             status = console::style("FAILED").red();
-            // TODO: failed output
-            println!("aa");
+            println!();
+            println!("failures:\n");
+            for (name, msg) in &failed_tests {
+                println!("---- {} ----", name);
+                if let Some(msg) = msg {
+                    println!("{}\n", msg);
+                }
+            }
         }
 
         println!();
-        println!("test result: {status}. {passed} passed; {failed} failed; {ignored} ignored; {measured} measured",
+        println!("test result: {status}. {passed} passed; {failed} failed; {ignored} ignored; {measured} measured; {filtered_out} filtered out",
             status = status,
             passed = num_passed,
             failed = failed_tests.len(),
             ignored = num_ignored,
             measured = num_measured,
+            filtered_out = filtered_out_tests.len(),
         );
 
         if failed_tests.is_empty() {

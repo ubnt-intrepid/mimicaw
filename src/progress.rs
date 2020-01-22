@@ -51,7 +51,7 @@ impl Progress {
                 Some(OutcomeKind::Passed) => console::style("ok").green().to_string(),
                 Some(OutcomeKind::Failed { .. }) => console::style("FAILED").red().to_string(),
                 Some(OutcomeKind::Measured { average, variance }) => format!(
-                    "{}: {:>10} ns/iter (+/- {})",
+                    "{}: {:>11} ns/iter (+/- {})",
                     console::style("bench").cyan(),
                     average.to_formatted_string(&Locale::en),
                     variance
