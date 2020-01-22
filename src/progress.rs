@@ -1,4 +1,4 @@
-use crate::test::Outcome;
+use crate::test::{Outcome, OutcomeKind};
 use futures::channel::oneshot;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use num_format::{Locale, ToFormattedString};
@@ -46,16 +46,17 @@ impl Progress {
     }
 
     pub(crate) fn finish(&self, outcome: Option<&Outcome>) {
-        self.bar.finish_with_message(&match outcome {
-            Some(Outcome::Passed) => console::style("ok").green().to_string(),
-            Some(Outcome::Failed { .. }) => console::style("FAILED").red().to_string(),
-            Some(Outcome::Measured { average, variance }) => format!(
-                "{}: {:>10} ns/iter (+/- {})",
-                console::style("bench").cyan(),
-                average.to_formatted_string(&Locale::en),
-                variance
-            ),
-            None => console::style("ignored").yellow().to_string(),
-        });
+        self.bar
+            .finish_with_message(&match outcome.as_ref().map(|outcome| outcome.kind()) {
+                Some(OutcomeKind::Passed) => console::style("ok").green().to_string(),
+                Some(OutcomeKind::Failed { .. }) => console::style("FAILED").red().to_string(),
+                Some(OutcomeKind::Measured { average, variance }) => format!(
+                    "{}: {:>10} ns/iter (+/- {})",
+                    console::style("bench").cyan(),
+                    average.to_formatted_string(&Locale::en),
+                    variance
+                ),
+                None => console::style("ignored").yellow().to_string(),
+            });
     }
 }

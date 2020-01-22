@@ -11,7 +11,7 @@ async fn main() {
             task::spawn(async {
                 Delay::new(Duration::from_secs(8)).await;
                 // do stuff...
-                Outcome::Passed
+                Outcome::passed()
             })
             .await
         }) as Pin<Box<dyn Future<Output = Outcome>>>),
@@ -19,9 +19,7 @@ async fn main() {
             task::spawn(async {
                 Delay::new(Duration::from_secs(4)).await;
                 // do stuff...
-                Outcome::Failed {
-                    msg: Some("foo".into()),
-                }
+                Outcome::failed().error_message("foo")
             })
             .await
         })),
@@ -29,7 +27,7 @@ async fn main() {
             task::spawn(async move {
                 Delay::new(Duration::from_secs(6)).await;
                 // do stuff ...
-                Outcome::Passed
+                Outcome::passed()
             })
             .await
         })),

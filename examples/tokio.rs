@@ -9,7 +9,7 @@ async fn main() {
             task::spawn(async {
                 tokio::time::delay_for(tokio::time::Duration::from_secs(10)).await;
                 // do stuff...
-                Outcome::Passed
+                Outcome::passed()
             })
             .await
             .unwrap()
@@ -19,9 +19,7 @@ async fn main() {
             task::spawn(async {
                 tokio::time::delay_for(tokio::time::Duration::from_secs(6)).await;
                 // do stuff...
-                Outcome::Failed {
-                    msg: Some("foo".into()),
-                }
+                Outcome::failed().error_message("foo")
             })
             .await
             .unwrap()
@@ -32,7 +30,7 @@ async fn main() {
                 task::spawn(async move {
                     tokio::time::delay_for(tokio::time::Duration::from_secs(3)).await;
                     // do stuff ...
-                    Outcome::Passed
+                    Outcome::passed()
                 })
                 .await
                 .unwrap()

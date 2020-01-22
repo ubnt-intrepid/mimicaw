@@ -12,6 +12,11 @@ pub use crate::{
 
 const ERROR_STATUS_CODE: i32 = 101;
 
+/// Run a set of tests asynchronously.
+///
+/// See [`TestDriver::run_tests`] for details.
+///
+/// [`TestDriver::run_tests`]: ./struct.TestDriver.html#method.run_tests
 pub async fn run_tests<D, I, F, R>(tests: I, runner: F) -> i32
 where
     I: IntoIterator<Item = Test<D>>,

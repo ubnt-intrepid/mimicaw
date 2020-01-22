@@ -1,7 +1,7 @@
 use crate::{
     args::Args,
     progress::{Container, Progress},
-    test::{Outcome, Test, TestKind},
+    test::{Outcome, OutcomeKind, Test, TestKind},
 };
 use futures::{
     future::Future,
@@ -45,12 +45,13 @@ where
     }
 }
 
+/// The test driver.
 pub struct TestDriver {
     args: Args,
 }
 
 impl TestDriver {
-    /// Create a test suite.
+    /// Create a test driver configured with the CLI options.
     pub fn from_env() -> Self {
         match Args::from_env() {
             Ok(args) => Self { args },
@@ -104,7 +105,7 @@ impl TestDriver {
         }
     }
 
-    /// Run the test suite and aggregate the results.
+    /// Run a set of tests using the specified test runner.
     pub async fn run_tests<D, I, F, R>(&mut self, tests: I, runner: F) -> i32
     where
         I: IntoIterator<Item = Test<D>>,
@@ -159,38 +160,41 @@ impl TestDriver {
             .collect();
 
         let run_tests = futures::stream::iter(running_tests.iter_mut()) //
-            .for_each_concurrent(1024, std::convert::identity);
+            .for_each_concurrent(None, std::convert::identity);
         let complete_progress = container.join();
         let _ = futures::future::join(run_tests, complete_progress).await;
 
-        let mut passed_tests = vec![];
+        let mut num_passed = 0;
         let mut failed_tests = vec![];
-        let mut benchmark_tests = vec![];
-        let mut ignored_tests = vec![];
+        let mut num_measured = 0;
+        let mut num_ignored = 0;
         for test in running_tests {
             match test.outcome {
-                Some(Outcome::Passed) => passed_tests.push(test.test),
-                Some(Outcome::Failed { msg }) => failed_tests.push((test.test, msg)),
-                Some(Outcome::Measured { average, variance }) => {
-                    benchmark_tests.push((test.test, average, variance))
-                }
-                None => ignored_tests.push(test.test),
+                Some(outcome) => match outcome.kind() {
+                    OutcomeKind::Passed => num_passed += 1,
+                    OutcomeKind::Failed => {
+                        failed_tests.push((test.test.name().clone(), outcome.err_msg()))
+                    }
+                    OutcomeKind::Measured { .. } => num_measured += 1,
+                },
+                None => num_ignored += 1,
             }
         }
 
-        let status = if failed_tests.is_empty() {
-            console::style("ok").green()
-        } else {
-            console::style("FAILED").red()
-        };
+        let mut status = console::style("ok").green();
+        if !failed_tests.is_empty() {
+            status = console::style("FAILED").red();
+            // TODO: failed output
+            println!("aa");
+        }
 
         println!();
         println!("test result: {status}. {passed} passed; {failed} failed; {ignored} ignored; {measured} measured",
             status = status,
-            passed = passed_tests.len(),
+            passed = num_passed,
             failed = failed_tests.len(),
-            ignored = ignored_tests.len(),
-            measured = benchmark_tests.len(),
+            ignored = num_ignored,
+            measured = num_measured,
         );
 
         if failed_tests.is_empty() {
