@@ -59,6 +59,16 @@ impl ExitStatus {
 }
 
 /// Run a test suite using the specified test runner.
+///
+/// The test suite runs as follows:
+///
+/// * Test cases that do not satisfy the conditions given in
+///   the command line options are filtered out.
+/// * Apply the test runner to each test case that passed to
+///   the filter, and create futures for awaiting their outcomes.
+///   these futures are executed concurrently, and their results
+///   are written to the console in the order of completion.
+/// * Finally, the results of all test cases are aggregated.
 pub async fn run_tests<D>(
     args: &Args,
     tests: impl IntoIterator<Item = Test<D>>,

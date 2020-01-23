@@ -45,6 +45,32 @@ pin_project! {
     }
 }
 
+impl<D, R> PendingTest<'_, D, R> {
+    fn start<F>(&mut self, args: &Args, name_length: usize, runner: &mut F)
+    where
+        F: TestRunner<D, Future = R>,
+        R: Future<Output = Outcome> + Unpin,
+    {
+        self.name_length = name_length;
+
+        let ignored = (self.desc.ignored() && !args.run_ignored)
+            || match self.desc.kind() {
+                TestKind::Test => !args.run_tests,
+                TestKind::Bench => !args.run_benchmarks,
+            };
+
+        let context = self
+            .context
+            .take()
+            .expect("the context has already been used");
+
+        if !ignored {
+            self.test_case
+                .replace(runner.run(self.desc.clone(), context));
+        }
+    }
+}
+
 impl<D, R> Future for PendingTest<'_, D, R>
 where
     R: Future<Output = Outcome>,
@@ -131,27 +157,11 @@ impl<'a> TestDriver<'a> {
             .max()
             .unwrap_or(0);
 
-        for test in &mut pending_tests {
-            test.name_length = max_name_length;
-
-            let ignored = (test.desc.ignored() && !self.args.run_ignored)
-                || match test.desc.kind() {
-                    TestKind::Test => !self.args.run_tests,
-                    TestKind::Bench => !self.args.run_benchmarks,
-                };
-
-            let context = test
-                .context
-                .take()
-                .expect("the context has already been used");
-            if !ignored {
-                test.test_case
-                    .replace(runner.run(test.desc.clone(), context));
-            }
-        }
-
         futures_util::stream::iter(pending_tests.iter_mut()) //
-            .for_each_concurrent(None, std::convert::identity)
+            .for_each_concurrent(None, |test: &mut _| {
+                test.start(&self.args, max_name_length, &mut runner);
+                test
+            })
             .await;
 
         let mut num_passed = 0;
@@ -175,12 +185,21 @@ impl<'a> TestDriver<'a> {
         if !failed_tests.is_empty() {
             status = self.printer.styled("FAILED").red();
             let _ = writeln!(self.printer.term());
-            let _ = writeln!(self.printer.term(), "failures:\n");
+            let _ = writeln!(self.printer.term(), "failures:");
             for (desc, msg) in &failed_tests {
                 let _ = writeln!(self.printer.term(), "---- {} ----", desc.name());
                 if let Some(msg) = msg {
-                    let _ = writeln!(self.printer.term(), "{}\n", msg);
+                    let _ = self.printer.term().write_str(&*msg);
+                    if msg.chars().last().map_or(true, |c| c != '\n') {
+                        let _ = self.printer.term().write_str("\n");
+                    }
                 }
+            }
+
+            let _ = writeln!(self.printer.term());
+            let _ = writeln!(self.printer.term(), "failures:");
+            for (desc, _) in &failed_tests {
+                let _ = writeln!(self.printer.term(), "    {}", desc.name());
             }
         }
 
