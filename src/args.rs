@@ -1,7 +1,7 @@
 use getopts::Options;
 use std::{
-    convert::{TryFrom, TryInto},
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 #[derive(Debug)]
@@ -58,10 +58,10 @@ impl Args {
 
 struct TestThreads(usize);
 
-impl TryFrom<String> for TestThreads {
-    type Error = Box<dyn std::error::Error>;
+impl FromStr for TestThreads {
+    type Err = Box<dyn std::error::Error>;
 
-    fn try_from(s: String) -> Result<Self, Self::Error> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         let n = s.parse().map_err(|e| {
             format!(
                 "argument for --test-threads must be a number > 0 (error: {})",
@@ -82,11 +82,11 @@ pub(crate) enum ColorConfig {
     Never,
 }
 
-impl TryFrom<String> for ColorConfig {
-    type Error = Box<dyn std::error::Error>;
+impl FromStr for ColorConfig {
+    type Err = Box<dyn std::error::Error>;
 
-    fn try_from(s: String) -> Result<Self, Self::Error> {
-        match s.as_str() {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
             "auto" => Ok(ColorConfig::Auto),
             "always" => Ok(ColorConfig::Always),
             "never" => Ok(ColorConfig::Never),
@@ -106,11 +106,11 @@ pub(crate) enum OutputFormat {
     Json,
 }
 
-impl TryFrom<String> for OutputFormat {
-    type Error = Box<dyn std::error::Error>;
+impl FromStr for OutputFormat {
+    type Err = Box<dyn std::error::Error>;
 
-    fn try_from(s: String) -> Result<Self, Self::Error> {
-        match s.as_str() {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
             "pretty" => Ok(OutputFormat::Pretty),
             "terse" => Ok(OutputFormat::Terse),
             "json" => Ok(OutputFormat::Json),
@@ -136,35 +136,33 @@ impl Parser {
         opts.optopt(
             "",
             "logfile",
-            "Write logs to the specified file instead \
-             of stdout",
+            "Write logs to the specified file instead of stdout.
+             (placeholder. not implemented yet)",
             "PATH",
         );
         opts.optflag(
             "",
             "nocapture",
-            "don't capture stdout/stderr of each \
-             task, allow printing directly",
+            "don't capture stdout/stderr of each task, allow printing directly.
+             (placeholder, not implemented yet)",
         );
         opts.optopt(
             "",
             "test-threads",
-            "Number of threads used for running tests \
-             in parallel",
+            "Number of threads used for running tests in parallel.
+             (placeholder, not implemented yet)",
             "n_threads",
         );
         opts.optmulti(
             "",
             "skip",
-            "Skip tests whose names contain FILTER (this flag can \
-             be used multiple times)",
+            "Skip tests whose names contain FILTER (this flag can be used multiple times)",
             "FILTER",
         );
         opts.optflag(
             "q",
             "quiet",
-            "Display one character per test instead of one line. \
-             Alias to --format=terse",
+            "Display one character per test instead of one line. Alias to --format=terse",
         );
         opts.optflag(
             "",
@@ -186,7 +184,7 @@ impl Parser {
             "Configure formatting of output:
                 pretty = Print verbose output;
                 terse  = Display one character per test;
-                json   = Output a json document",
+                json   = Output a json document (placeholder, not implemented yet)",
             "pretty|terse|json",
         );
 
@@ -204,15 +202,7 @@ impl Parser {
             r#"{usage}
     
     The FILTER string is tested against the name of all tests, and only those
-    tests whose names contain the filter are run.
-    
-    By default, all tests are run in parallel. This can be altered with the
-    --test-threads flag or the RUST_TEST_THREADS environment variable when running
-    tests (set it to 1).
-    
-    All tests have their standard output and standard error captured by default.
-    This can be overridden with the --nocapture flag or setting RUST_TEST_NOCAPTURE
-    environment variable to a value other than "0". Logging is not captured by default."#,
+    tests whose names contain the filter are run."#,
             usage = self.0.usage(&message)
         );
     }
@@ -229,7 +219,7 @@ impl Parser {
         let quiet = matches.opt_present("quiet");
         let filter_exact = matches.opt_present("exact");
         let list = matches.opt_present("list");
-        let logfile = matches.opt_str("logfile").map(|s| PathBuf::from(&s));
+        let logfile = matches.opt_get("logfile")?;
 
         let run_benchmarks = matches.opt_present("bench");
         let run_tests = !run_benchmarks || matches.opt_present("test");
@@ -240,21 +230,17 @@ impl Parser {
                 .map_or(false, |val| &val != "0")
         };
 
-        let test_threads = match matches.opt_str("test-threads") {
-            Some(n_str) => n_str.try_into().map(|TestThreads(n)| Some(n))?,
-            None => None,
-        };
+        let test_threads = matches.opt_get("test-threads")?.map(|TestThreads(n)| n);
 
-        let color = match matches.opt_str("color") {
-            Some(s) => s.try_into()?,
-            None => ColorConfig::Auto,
-        };
+        let color = matches.opt_get("color")?.unwrap_or(ColorConfig::Auto);
 
-        let format = match matches.opt_str("format") {
-            Some(s) => s.try_into()?,
-            None if quiet => OutputFormat::Terse,
-            None => OutputFormat::Pretty,
-        };
+        let format = matches.opt_get("format")?.unwrap_or_else(|| {
+            if quiet {
+                OutputFormat::Terse
+            } else {
+                OutputFormat::Pretty
+            }
+        });
 
         let skip = matches.opt_strs("skip");
 
