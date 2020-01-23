@@ -1,5 +1,6 @@
 use crate::{
     args::Args,
+    printer::Printer,
     test::{Outcome, OutcomeKind, Test, TestDesc, TestKind},
 };
 use futures_core::{
@@ -8,7 +9,7 @@ use futures_core::{
 };
 use futures_util::{ready, stream::StreamExt};
 use pin_project_lite::pin_project;
-use std::{collections::HashSet, pin::Pin};
+use std::{collections::HashSet, io::Write, pin::Pin, sync::Arc};
 
 pin_project! {
     struct PendingTest<D, R> {
@@ -17,7 +18,7 @@ pin_project! {
         #[pin]
         test_case: Option<R>,
         outcome: Option<Outcome>,
-        name_length: usize,
+        printer: Arc<Printer>,
     }
 }
 
@@ -33,37 +34,11 @@ where
         match me.test_case.as_pin_mut() {
             Some(test_case) => {
                 let outcome = ready!(test_case.poll(cx));
-                match outcome.kind() {
-                    OutcomeKind::Passed => println!(
-                        "test {0:<1$} ... {2}",
-                        me.desc.name(),
-                        me.name_length,
-                        console::style("ok").green()
-                    ),
-                    OutcomeKind::Failed => println!(
-                        "test {0:<1$} ... {2}",
-                        me.desc.name(),
-                        me.name_length,
-                        console::style("FAILED").red()
-                    ),
-                    OutcomeKind::Measured { average, variance } => println!(
-                        "test {0:<1$} ... {2}: {3} nsec/iter (+/- {4})",
-                        me.desc.name(),
-                        me.name_length,
-                        console::style("bench").cyan(),
-                        average,
-                        variance
-                    ),
-                }
+                me.printer.print_result(me.desc, Some(&outcome));
                 me.outcome.replace(outcome);
             }
             None => {
-                println!(
-                    "test {0:<1$} ... {2}",
-                    me.desc.name(),
-                    me.name_length,
-                    console::style("ignored").yellow()
-                );
+                me.printer.print_result(me.desc, None);
             }
         }
 
@@ -84,49 +59,9 @@ impl TestDriver {
         })
     }
 
-    fn print_list<D, R>(&self, tests: &[PendingTest<D, R>]) {
-        let quiet = self.args.format == crate::args::OutputFormat::Terse;
-
-        let mut num_tests = 0;
-        let mut num_benches = 0;
-
-        for test in tests {
-            let kind_str = match test.desc.kind() {
-                TestKind::Test => {
-                    num_tests += 1;
-                    "test"
-                }
-                TestKind::Bench => {
-                    num_benches += 1;
-                    "benchmark"
-                }
-            };
-            println!("{}: {}", test.desc.name(), kind_str);
-        }
-
-        if !quiet {
-            fn plural_suffix(n: usize) -> &'static str {
-                match n {
-                    1 => "",
-                    _ => "s",
-                }
-            }
-
-            if num_tests != 0 || num_benches != 0 {
-                println!();
-            }
-            println!(
-                "{} test{}, {} benchmark{}",
-                num_tests,
-                plural_suffix(num_tests),
-                num_benches,
-                plural_suffix(num_benches)
-            );
-        }
-    }
-
     fn apply_filter<D, R>(
         &self,
+        printer: &Arc<Printer>,
         tests: impl IntoIterator<Item = Test<D>>,
     ) -> (Vec<PendingTest<D, R>>, usize) {
         let mut pending_tests = vec![];
@@ -149,7 +84,7 @@ impl TestDriver {
                 context: Some(context),
                 test_case: None,
                 outcome: None,
-                name_length: 0,
+                printer: printer.clone(),
             });
         }
 
@@ -165,20 +100,23 @@ impl TestDriver {
     {
         let mut runner = runner;
 
-        let (mut pending_tests, num_filtered_out) = self.apply_filter(tests);
+        let printer = Arc::new(Printer::new(&self.args));
+
+        let (mut pending_tests, num_filtered_out) = self.apply_filter(&printer, tests);
 
         if self.args.list {
-            self.print_list(&pending_tests);
+            printer.print_list(pending_tests.iter().map(|test| &test.desc));
             return 0;
         }
 
-        println!("running {} tests", pending_tests.len());
+        let _ = writeln!(&mut printer.term(), "running {} tests", pending_tests.len());
 
         let max_name_length = pending_tests
             .iter()
             .map(|test| test.desc.name().len())
             .max()
             .unwrap_or(0);
+        printer.set_name_length(max_name_length);
 
         for test in &mut pending_tests {
             let ignored = (test.desc.ignored() && !self.args.run_ignored)
@@ -194,7 +132,6 @@ impl TestDriver {
             if !ignored {
                 test.test_case.replace(runner(&test.desc, context));
             }
-            test.name_length = max_name_length;
         }
 
         futures_util::stream::iter(pending_tests.iter_mut()) //
@@ -221,18 +158,18 @@ impl TestDriver {
         let mut status = console::style("ok").green();
         if !failed_tests.is_empty() {
             status = console::style("FAILED").red();
-            println!();
-            println!("failures:\n");
+            let _ = writeln!(&mut printer.term());
+            let _ = writeln!(&mut printer.term(), "failures:\n");
             for (name, msg) in &failed_tests {
-                println!("---- {} ----", name);
+                let _ = writeln!(&mut printer.term(), "---- {} ----", name);
                 if let Some(msg) = msg {
-                    println!("{}\n", msg);
+                    let _ = writeln!(&mut printer.term(), "{}\n", msg);
                 }
             }
         }
 
-        println!();
-        println!("test result: {status}. {passed} passed; {failed} failed; {ignored} ignored; {measured} measured; {filtered_out} filtered out",
+        let _ = writeln!(&mut printer.term());
+        let _ = writeln!(&mut printer.term(), "test result: {status}. {passed} passed; {failed} failed; {ignored} ignored; {measured} measured; {filtered_out} filtered out",
             status = status,
             passed = num_passed,
             failed = failed_tests.len(),

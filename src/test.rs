@@ -14,6 +14,12 @@ pub struct TestDesc {
     ignored: bool,
 }
 
+impl AsRef<Self> for TestDesc {
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
 impl TestDesc {
     pub(crate) fn name_arc(&self) -> &Arc<String> {
         &self.name

@@ -6,6 +6,7 @@
 
 mod args;
 mod driver;
+mod printer;
 mod test;
 
 pub use crate::test::{Outcome, Test, TestDesc};
