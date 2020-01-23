@@ -72,6 +72,16 @@
 <span id="72">72</span>
 <span id="73">73</span>
 <span id="74">74</span>
+<span id="75">75</span>
+<span id="76">76</span>
+<span id="77">77</span>
+<span id="78">78</span>
+<span id="79">79</span>
+<span id="80">80</span>
+<span id="81">81</span>
+<span id="82">82</span>
+<span id="83">83</span>
+<span id="84">84</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="doccomment">//! A library for writing asynchronous tests.</span>
 
@@ -134,6 +144,16 @@
 }
 
 <span class="doccomment">/// Run a test suite using the specified test runner.</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// The test suite runs as follows:</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// * Test cases that do not satisfy the conditions given in</span>
+<span class="doccomment">///   the command line options are filtered out.</span>
+<span class="doccomment">/// * Apply the test runner to each test case that passed to</span>
+<span class="doccomment">///   the filter, and create futures for awaiting their outcomes.</span>
+<span class="doccomment">///   these futures are executed concurrently, and their results</span>
+<span class="doccomment">///   are written to the console in the order of completion.</span>
+<span class="doccomment">/// * Finally, the results of all test cases are aggregated.</span>
 <span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">run_tests</span><span class="op">&lt;</span><span class="ident">D</span><span class="op">&gt;</span>(
     <span class="ident">args</span>: <span class="kw-2">&amp;</span><span class="ident">Args</span>,
     <span class="ident">tests</span>: <span class="kw">impl</span> <span class="ident">IntoIterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">Test</span><span class="op">&lt;</span><span class="ident">D</span><span class="op">&gt;</span><span class="op">&gt;</span>,
