@@ -8,6 +8,8 @@ use rand::{
 use std::time::Duration;
 
 fn main() {
+    let args = mimicaw::parse_args();
+
     let mut rng = rand::thread_rng();
     let bernoulli = Bernoulli::new(0.8).unwrap();
     let intervals = &[2, 3, 5, 7];
@@ -24,11 +26,15 @@ fn main() {
         Test::test(&name, (delay, outcome))
     });
 
-    let status = block_on(mimicaw::run_tests(tests, |_desc, (delay, outcome)| {
-        Box::pin(async move {
-            delay.await;
-            outcome
-        })
-    }));
+    let status = block_on(mimicaw::run_tests(
+        &args,
+        tests,
+        |_desc, (delay, outcome)| {
+            Box::pin(async move {
+                delay.await;
+                outcome
+            })
+        },
+    ));
     std::process::exit(status);
 }

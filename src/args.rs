@@ -1,38 +1,46 @@
+#![allow(missing_docs)]
+
 use getopts::Options;
 use std::{
     path::{Path, PathBuf},
     str::FromStr,
 };
 
+/// Parse command line arguments.
+pub fn parse_args() -> Args {
+    let parser = Parser::new();
+    match parser.parse_args() {
+        Ok(Some(args)) => args,
+        Ok(None) => {
+            parser.print_usage();
+            std::process::exit(0);
+        }
+        Err(err) => {
+            eprintln!("CLI argument error: {}", err);
+            std::process::exit(crate::ERROR_STATUS_CODE);
+        }
+    }
+}
+
+/// Command line arguments.
 #[derive(Debug)]
-pub(crate) struct Args {
-    pub(crate) list: bool,
-    pub(crate) filter: Option<String>,
-    pub(crate) filter_exact: bool,
-    pub(crate) run_ignored: bool,
-    pub(crate) run_tests: bool,
-    pub(crate) run_benchmarks: bool,
-    pub(crate) logfile: Option<PathBuf>,
-    pub(crate) nocapture: bool,
-    pub(crate) color: ColorConfig,
-    pub(crate) format: OutputFormat,
-    pub(crate) test_threads: Option<usize>,
-    pub(crate) skip: Vec<String>,
+#[non_exhaustive]
+pub struct Args {
+    pub list: bool,
+    pub filter: Option<String>,
+    pub filter_exact: bool,
+    pub run_ignored: bool,
+    pub run_tests: bool,
+    pub run_benchmarks: bool,
+    pub logfile: Option<PathBuf>,
+    pub nocapture: bool,
+    pub color: ColorConfig,
+    pub format: OutputFormat,
+    pub test_threads: Option<usize>,
+    pub skip: Vec<String>,
 }
 
 impl Args {
-    pub(crate) fn from_env() -> Result<Self, i32> {
-        let args: Vec<_> = std::env::args().collect();
-        let parser = Parser::new();
-        match parser.parse_args(&args) {
-            Ok(args) => args.ok_or(0),
-            Err(err) => {
-                eprintln!("error: {}", err);
-                Err(crate::ERROR_STATUS_CODE)
-            }
-        }
-    }
-
     pub(crate) fn is_filtered(&self, name: &str) -> bool {
         if let Some(ref filter) = self.filter {
             if self.filter_exact && name != filter {
@@ -75,8 +83,10 @@ impl FromStr for TestThreads {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub(crate) enum ColorConfig {
+/// The color configuration.
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum ColorConfig {
     Auto,
     Always,
     Never,
@@ -99,8 +109,10 @@ impl FromStr for ColorConfig {
     }
 }
 
+/// The output format.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub(crate) enum OutputFormat {
+#[non_exhaustive]
+pub enum OutputFormat {
     Pretty,
     Terse,
     Json,
@@ -123,7 +135,10 @@ impl FromStr for OutputFormat {
     }
 }
 
-struct Parser(Options);
+struct Parser {
+    args: Vec<String>,
+    opts: Options,
+}
 
 impl Parser {
     fn new() -> Self {
@@ -188,10 +203,14 @@ impl Parser {
             "pretty|terse|json",
         );
 
-        Self(opts)
+        Self {
+            args: std::env::args().collect(),
+            opts,
+        }
     }
 
-    fn print_usage(&self, binary: &str) {
+    fn print_usage(&self) {
+        let binary = &self.args[0];
         let progname = Path::new(binary)
             .file_name()
             .and_then(|s| s.to_str())
@@ -203,14 +222,15 @@ impl Parser {
     
     The FILTER string is tested against the name of all tests, and only those
     tests whose names contain the filter are run."#,
-            usage = self.0.usage(&message)
+            usage = self.opts.usage(&message)
         );
     }
 
-    fn parse_args(&self, args: &[String]) -> Result<Option<Args>, Box<dyn std::error::Error>> {
-        let matches = self.0.parse(args.get(1..).unwrap_or(args))?;
+    fn parse_args(&self) -> Result<Option<Args>, Box<dyn std::error::Error>> {
+        let args = &self.args[..];
+
+        let matches = self.opts.parse(args.get(1..).unwrap_or(args))?;
         if matches.opt_present("h") {
-            self.print_usage(&args[0]);
             return Ok(None);
         }
 

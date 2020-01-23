@@ -6,6 +6,8 @@ use std::time::Duration;
 
 #[async_std::main]
 async fn main() {
+    let args = mimicaw::parse_args();
+
     let tests = vec![
         Test::test("case1", {
             async {
@@ -42,6 +44,6 @@ async fn main() {
         }),
     ];
 
-    let status = mimicaw::run_tests(tests, |_, fut| fut).await;
+    let status = mimicaw::run_tests(&args, tests, |_, fut| fut).await;
     std::process::exit(status);
 }

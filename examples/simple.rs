@@ -2,6 +2,8 @@ use futures::executor::block_on;
 use mimicaw::{Outcome, Test};
 
 fn main() {
+    let args = mimicaw::parse_args();
+
     let tests = vec![
         Test::test("case1", "foo"),
         Test::test("case2", "bar"),
@@ -9,7 +11,7 @@ fn main() {
         Test::test("case4", "The quick brown fox jumps over the lazy dog."),
     ];
 
-    let status = block_on(mimicaw::run_tests(tests, |_desc, data| {
+    let status = block_on(mimicaw::run_tests(&args, tests, |_desc, data| {
         futures::future::ready(match data {
             "foo" | "baz" => Outcome::passed(),
             "bar" => Outcome::failed().error_message("`bar' is forbidden"),

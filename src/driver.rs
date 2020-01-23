@@ -48,22 +48,18 @@ where
     }
 }
 
-/// The test driver.
-pub struct TestDriver {
-    args: Args,
+pub(crate) struct TestDriver<'a> {
+    args: &'a Args,
     printer: Printer,
 }
 
-impl TestDriver {
-    /// Create a test driver configured with the CLI options.
-    pub fn from_env() -> Result<Self, i32> {
-        let args = Args::from_env()?;
+impl<'a> TestDriver<'a> {
+    pub(crate) fn new(args: &'a Args) -> Self {
         let printer = Printer::new(&args);
-        Ok(Self { args, printer })
+        Self { args, printer }
     }
 
-    /// Run a set of tests using the specified test runner.
-    pub async fn run_tests<D, I, F, R>(&self, tests: I, runner: F) -> i32
+    pub(crate) async fn run_tests<D, I, F, R>(&self, tests: I, runner: F) -> i32
     where
         I: IntoIterator<Item = Test<D>>,
         F: FnMut(&TestDesc, D) -> R,
