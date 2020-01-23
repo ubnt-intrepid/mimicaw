@@ -12,10 +12,12 @@ fn main() {
     ];
 
     block_on(mimicaw::run_tests(&args, tests, |_desc, data| {
-        futures::future::ready(match data {
-            "foo" | "baz" => Outcome::passed(),
-            "bar" => Outcome::failed().error_message("`bar' is forbidden"),
-            data => Outcome::failed().error_message(format!("unknown data: {}", data)),
+        Box::pin(async move {
+            match data {
+                "foo" | "baz" => Outcome::passed(),
+                "bar" => Outcome::failed().error_message("`bar' is forbidden"),
+                data => Outcome::failed().error_message(format!("unknown data: {}", data)),
+            }
         })
     }))
     .exit()

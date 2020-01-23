@@ -8,8 +8,11 @@ pub(crate) enum TestKind {
 
 /// Description about a test.
 #[derive(Debug, Clone)]
-pub struct TestDesc {
-    name: Arc<String>,
+pub struct TestDesc(Arc<TestDescInner>);
+
+#[derive(Debug)]
+struct TestDescInner {
+    name: Cow<'static, str>,
     kind: TestKind,
     ignored: bool,
 }
@@ -21,24 +24,20 @@ impl AsRef<Self> for TestDesc {
 }
 
 impl TestDesc {
-    pub(crate) fn name_arc(&self) -> &Arc<String> {
-        &self.name
-    }
-
     pub(crate) fn kind(&self) -> &TestKind {
-        &self.kind
+        &self.0.kind
     }
 
     /// Return the name of test.
     #[inline]
     pub fn name(&self) -> &str {
-        &*self.name
+        &*self.0.name
     }
 
     /// Return whether the test is a benchmark or not.
     #[inline]
     pub fn is_bench(&self) -> bool {
-        match self.kind {
+        match self.0.kind {
             TestKind::Bench => true,
             _ => false,
         }
@@ -47,7 +46,7 @@ impl TestDesc {
     /// Return whether the test should be ignored or not.
     #[inline]
     pub fn ignored(&self) -> bool {
-        self.ignored
+        self.0.ignored
     }
 }
 
@@ -59,29 +58,29 @@ pub struct Test<D> {
 
 impl<D> Test<D> {
     /// Create a single test.
-    pub fn test(name: &str, data: D) -> Self {
-        Self::new(name, TestKind::Test, data)
+    pub fn test(name: impl Into<Cow<'static, str>>, data: D) -> Self {
+        Self::new(name.into(), TestKind::Test, data)
     }
 
     /// Create a single benchmark test.
-    pub fn bench(name: &str, data: D) -> Self {
-        Self::new(name, TestKind::Bench, data)
+    pub fn bench(name: impl Into<Cow<'static, str>>, data: D) -> Self {
+        Self::new(name.into(), TestKind::Bench, data)
     }
 
-    fn new(name: &str, kind: TestKind, data: D) -> Self {
+    fn new(name: Cow<'static, str>, kind: TestKind, data: D) -> Self {
         Self {
-            desc: TestDesc {
-                name: Arc::new(name.into()),
+            desc: TestDesc(Arc::new(TestDescInner {
+                name,
                 kind,
                 ignored: false,
-            },
+            })),
             data,
         }
     }
 
     /// Mark that this test should be ignored.
     pub fn ignore(mut self, value: bool) -> Self {
-        self.desc.ignored = value;
+        Arc::get_mut(&mut self.desc.0).unwrap().ignored = value;
         self
     }
 

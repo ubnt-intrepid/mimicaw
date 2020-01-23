@@ -11,11 +11,11 @@ mod test;
 
 pub use crate::{
     args::{Args, ColorConfig, OutputFormat},
+    driver::TestRunner,
     test::{Outcome, Test, TestDesc},
 };
 
 use crate::driver::TestDriver;
-use futures_core::future::Future;
 
 /// Exit status code used as a result of the test process.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -58,15 +58,12 @@ impl ExitStatus {
     }
 }
 
-/// Run a set of tests.
-pub async fn run_tests<D, R>(
+/// Run a test suite using the specified test runner.
+pub async fn run_tests<D>(
     args: &Args,
     tests: impl IntoIterator<Item = Test<D>>,
-    runner: impl FnMut(&TestDesc, D) -> R,
-) -> ExitStatus
-where
-    R: Future<Output = Outcome> + Unpin,
-{
+    runner: impl TestRunner<D>,
+) -> ExitStatus {
     let driver = TestDriver::new(&args);
     driver.run_tests(tests, runner).await
 }

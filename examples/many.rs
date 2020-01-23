@@ -23,7 +23,7 @@ fn main() {
         } else {
             Outcome::failed()
         };
-        Test::test(&name, (delay, outcome))
+        Test::test(name, (delay, outcome))
     });
 
     block_on(mimicaw::run_tests(

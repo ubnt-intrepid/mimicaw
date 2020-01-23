@@ -12,6 +12,27 @@ use futures_util::{ready, stream::StreamExt};
 use pin_project_lite::pin_project;
 use std::{collections::HashSet, io::Write, pin::Pin};
 
+/// The runner of test cases.
+pub trait TestRunner<D> {
+    /// The type of future returned from `run`.
+    type Future: Future<Output = Outcome> + Unpin;
+
+    /// Run a test case.
+    fn run(&mut self, desc: TestDesc, data: D) -> Self::Future;
+}
+
+impl<F, D, R> TestRunner<D> for F
+where
+    F: FnMut(TestDesc, D) -> R,
+    R: Future<Output = Outcome> + Unpin,
+{
+    type Future = R;
+
+    fn run(&mut self, desc: TestDesc, data: D) -> Self::Future {
+        (*self)(desc, data)
+    }
+}
+
 pin_project! {
     struct PendingTest<'a, D, R> {
         desc: TestDesc,
@@ -60,12 +81,11 @@ impl<'a> TestDriver<'a> {
         Self { args, printer }
     }
 
-    pub(crate) async fn run_tests<D, I, F, R>(&self, tests: I, runner: F) -> ExitStatus
-    where
-        I: IntoIterator<Item = Test<D>>,
-        F: FnMut(&TestDesc, D) -> R,
-        R: Future<Output = Outcome> + Unpin,
-    {
+    pub(crate) async fn run_tests<D>(
+        &self,
+        tests: impl IntoIterator<Item = Test<D>>,
+        runner: impl TestRunner<D>,
+    ) -> ExitStatus {
         let mut runner = runner;
 
         let (mut pending_tests, num_filtered_out) = {
@@ -75,7 +95,7 @@ impl<'a> TestDriver<'a> {
 
             for test in tests {
                 let (desc, context) = test.deconstruct();
-                if !test_names.insert(desc.name_arc().clone()) {
+                if !test_names.insert(desc.name().to_string()) {
                     panic!("the test name is conflicted");
                 }
 
@@ -125,7 +145,8 @@ impl<'a> TestDriver<'a> {
                 .take()
                 .expect("the context has already been used");
             if !ignored {
-                test.test_case.replace(runner(&test.desc, context));
+                test.test_case
+                    .replace(runner.run(test.desc.clone(), context));
             }
         }
 
@@ -142,7 +163,7 @@ impl<'a> TestDriver<'a> {
                 Some(outcome) => match outcome.kind() {
                     OutcomeKind::Passed => num_passed += 1,
                     OutcomeKind::Failed => {
-                        failed_tests.push((test.desc.name_arc().clone(), outcome.err_msg()))
+                        failed_tests.push((test.desc.clone(), outcome.err_msg()))
                     }
                     OutcomeKind::Measured { .. } => num_measured += 1,
                 },
@@ -155,8 +176,8 @@ impl<'a> TestDriver<'a> {
             status = self.printer.styled("FAILED").red();
             let _ = writeln!(self.printer.term());
             let _ = writeln!(self.printer.term(), "failures:\n");
-            for (name, msg) in &failed_tests {
-                let _ = writeln!(self.printer.term(), "---- {} ----", name);
+            for (desc, msg) in &failed_tests {
+                let _ = writeln!(self.printer.term(), "---- {} ----", desc.name());
                 if let Some(msg) = msg {
                     let _ = writeln!(self.printer.term(), "{}\n", msg);
                 }
