@@ -25,7 +25,7 @@ where
     R: Future<Output = Outcome> + Unpin,
 {
     match TestDriver::from_env() {
-        Ok(mut driver) => driver.run_tests(tests, runner).await,
+        Ok(driver) => driver.run_tests(tests, runner).await,
         Err(code) => code,
     }
 }

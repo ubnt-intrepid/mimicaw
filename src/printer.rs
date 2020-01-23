@@ -3,14 +3,10 @@ use crate::{
     test::{Outcome, OutcomeKind, TestDesc, TestKind},
 };
 use console::{Style, StyledObject, Term};
-use std::{
-    io::Write,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use std::io::Write;
 
 pub(crate) struct Printer {
     term: Term,
-    name_length: AtomicUsize,
     format: OutputFormat,
     style: Style,
 }
@@ -19,7 +15,6 @@ impl Printer {
     pub(crate) fn new(args: &Args) -> Self {
         Self {
             term: Term::buffered_stdout(),
-            name_length: AtomicUsize::new(0),
             format: args.format,
             style: {
                 let mut style = Style::new();
@@ -35,10 +30,6 @@ impl Printer {
 
     pub(crate) fn term(&self) -> &Term {
         &self.term
-    }
-
-    pub(crate) fn set_name_length(&self, value: usize) {
-        self.name_length.store(value, Ordering::SeqCst);
     }
 
     pub(crate) fn styled<D>(&self, val: D) -> StyledObject<D> {
@@ -63,7 +54,7 @@ impl Printer {
                     "benchmark"
                 }
             };
-            let _ = writeln!(&mut &self.term, "{}: {}", desc.name(), kind_str);
+            let _ = writeln!(&self.term, "{}: {}", desc.name(), kind_str);
         }
 
         if !quiet {
@@ -75,10 +66,10 @@ impl Printer {
             }
 
             if num_tests != 0 || num_benches != 0 {
-                let _ = writeln!(&mut &self.term);
+                let _ = writeln!(&self.term);
             }
             let _ = writeln!(
-                &mut &self.term,
+                &self.term,
                 "{} test{}, {} benchmark{}",
                 num_tests,
                 plural_suffix(num_tests),
@@ -88,10 +79,15 @@ impl Printer {
         }
     }
 
-    pub(crate) fn print_result(&self, desc: &TestDesc, outcome: Option<&Outcome>) {
+    pub(crate) fn print_result(
+        &self,
+        desc: &TestDesc,
+        name_length: usize,
+        outcome: Option<&Outcome>,
+    ) {
         match self.format {
-            OutputFormat::Pretty => self.print_result_pretty(desc, outcome),
-            OutputFormat::Terse => self.print_result_terse(desc, outcome),
+            OutputFormat::Pretty => self.print_result_pretty(desc, name_length, outcome),
+            OutputFormat::Terse => self.print_result_terse(desc, name_length, outcome),
             OutputFormat::Json => eprintln!(
                 "{warning}: JSON format is not supported",
                 warning = self.styled("warning").yellow()
@@ -99,15 +95,14 @@ impl Printer {
         }
     }
 
-    fn print_result_pretty(&self, desc: &TestDesc, outcome: Option<&Outcome>) {
+    fn print_result_pretty(&self, desc: &TestDesc, name_length: usize, outcome: Option<&Outcome>) {
         let name = desc.name();
-        let name_length = self.name_length.load(Ordering::SeqCst);
 
         match outcome {
             Some(outcome) => match outcome.kind() {
                 OutcomeKind::Passed => {
                     let _ = writeln!(
-                        &mut &self.term,
+                        &self.term,
                         "test {0:<1$} ... {2}",
                         name,
                         name_length,
@@ -116,7 +111,7 @@ impl Printer {
                 }
                 OutcomeKind::Failed => {
                     let _ = writeln!(
-                        &mut &self.term,
+                        &self.term,
                         "test {0:<1$} ... {2}",
                         name,
                         name_length,
@@ -125,7 +120,7 @@ impl Printer {
                 }
                 OutcomeKind::Measured { average, variance } => {
                     let _ = writeln!(
-                        &mut &self.term,
+                        &self.term,
                         "test {0:<1$} ... {2}: {3:>11} ns/iter (+/- {4})",
                         name,
                         name_length,
@@ -137,7 +132,7 @@ impl Printer {
             },
             None => {
                 let _ = writeln!(
-                    &mut &self.term,
+                    &self.term,
                     "test {0:<1$} ... {2}",
                     name,
                     name_length,
@@ -148,14 +143,14 @@ impl Printer {
         let _ = self.term.flush();
     }
 
-    fn print_result_terse(&self, desc: &TestDesc, outcome: Option<&Outcome>) {
+    fn print_result_terse(&self, desc: &TestDesc, name_length: usize, outcome: Option<&Outcome>) {
         let ch = match outcome {
             Some(o) => match o.kind() {
                 OutcomeKind::Passed => ".",
                 OutcomeKind::Failed => "F",
                 OutcomeKind::Measured { .. } => {
                     // benchmark test does not support terse format.
-                    return self.print_result_pretty(desc, outcome);
+                    return self.print_result_pretty(desc, name_length, outcome);
                 }
             },
             None => "i",
