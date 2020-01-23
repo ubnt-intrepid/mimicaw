@@ -2,7 +2,7 @@
 name = "mimicaw"
 version = "0.0.2"
 description = """
-A tiny test framework for asynchronous integration tests.
+A library for writing asynchronous tests.
 """
 license = "MIT OR Apache-2.0"
 authors = [ "Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>" ]

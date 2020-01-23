@@ -1,4 +1,4 @@
-//! A tiny test framework for asynchronous integration tests.
+//! A library for writing asynchronous tests.
 
 #![doc(html_root_url = "https://docs.rs/mimicaw/0.0.2")]
 #![deny(missing_docs)]

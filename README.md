@@ -3,7 +3,7 @@
 </h1>
 <div align="center">
   <strong>
-    A tiny test framework for asynchronous integration tests.
+    A library for writing asynchronous tests.
   </strong>
 </div>
 
@@ -28,11 +28,47 @@
 
 <br />
 
-`mimicaw` is a tiny test library for writing asynchronous integration tests using the asynchronous runtime, such as `tokio` and `async-std`.
-The concept of this library is inspired from [`libtest-mimic`](https://github.com/LukasKalbertodt/libtest-mimic), but also focuses on
+`mimicaw` is a tiny library for writing asynchronous tests.
+The concept of this library is inspired by [`libtest-mimic`](https://github.com/LukasKalbertodt/libtest-mimic), but also focuses on
 the compatibility with `async`/`.await` language syntax.
 
-**WARNING:** This project is currently under active development and not ready for production use.
+## Example
+
+```rust
+use mimicaw::{Args, Test, TestDesc, Outcome};
+
+// Parse command line arguments.
+let args = Args::from_env().unwrap_or_else(|st| st.exit());
+
+// Each test case is described using `Test` having one associated data.
+//
+// The data will be used by the runner described below to run tests.
+let tests = vec![
+    Test::test("case1", "foo"),
+    Test::test("case2", "bar"),
+    Test::test("case3_long_computation", "baz"),
+    Test::test("case4", "The quick brown fox jumps over the lazy dog."),
+];
+
+// A closure for running the test cases.
+//
+// Each test result is asynchronous and a future is returned
+// to acquire the result.
+let runner = |_desc: &TestDesc, data: &str| {
+    futures::future::ready(match data {
+        "foo" | "baz" => Outcome::passed(),
+        "bar" => Outcome::failed().error_message("`bar' is forbidden"),
+        data => Outcome::failed().error_message(format!("unknown data: {}", data)),
+    })
+};
+
+// Run the process of test suite.
+//
+// The test cases are filtered according to the command line arguments,
+// and then executed concurrently from the top.
+let status = mimicaw::run_tests(&args, tests, runner).await;
+status.exit()
+```
 
 ## Resources
 
