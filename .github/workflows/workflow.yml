@@ -14,9 +14,10 @@ jobs:
     strategy:
       matrix:
         conf:
-          - { toolchain: stable  , os: ubuntu-18.04   }
+          - { toolchain: stable  , os: ubuntu-18.04   , components: "rustfmt, clippy" }
           - { toolchain: beta    , os: ubuntu-18.04   }
           - { toolchain: nightly , os: ubuntu-18.04   }
+          - { toolchain: 1.40.0  , os: ubuntu-18.04   } # minimum supported toolchain
           - { toolchain: stable  , os: macos-latest   }
           - { toolchain: stable  , os: windows-latest }
 
@@ -28,44 +29,27 @@ jobs:
       with:
         profile: minimal
         toolchain: ${{ matrix.conf.toolchain }}
+        components: ${{ matrix.conf.components }}
         override: true
-
-    - name: Build
-      uses: actions-rs/cargo@v1
-      with:
-        command: build
-        args: --all-targets
-      if: matrix.conf.only_build == true
-
-    - name: Run tests
-      uses: actions-rs/cargo@v1
-      with:
-        command: test
-      if: matrix.conf.only_build != true
-  
-  Lint:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v1
-    - name: Install Rust toolchain
-      uses: actions-rs/toolchain@v1
-      with:
-        profile: minimal
-        toolchain: stable
-        components: clippy, rustfmt
-        override: true
-
-    - name: Format check
+    
+    - name: Run format check
       uses: actions-rs/cargo@v1
       with:
         command: fmt
         args: --all -- --check
+      if: contains(matrix.conf.components, 'rustfmt')
 
     - name: Run clippy
       uses: actions-rs/cargo@v1
       with:
         command: clippy
         args: --workspace --all-targets
+      if: contains(matrix.conf.components, 'clippy')
+
+    - name: Run tests
+      uses: actions-rs/cargo@v1
+      with:
+        command: test
 
   DeployMasterDoc:
     runs-on: ubuntu-18.04
