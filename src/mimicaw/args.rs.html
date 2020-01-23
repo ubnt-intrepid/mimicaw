@@ -260,25 +260,11 @@
 <span id="260">260</span>
 <span id="261">261</span>
 <span id="262">262</span>
-<span id="263">263</span>
-<span id="264">264</span>
-<span id="265">265</span>
-<span id="266">266</span>
-<span id="267">267</span>
-<span id="268">268</span>
-<span id="269">269</span>
-<span id="270">270</span>
-<span id="271">271</span>
-<span id="272">272</span>
-<span id="273">273</span>
-<span id="274">274</span>
-<span id="275">275</span>
-<span id="276">276</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="kw">use</span> <span class="ident">getopts</span>::<span class="ident">Options</span>;
 <span class="kw">use</span> <span class="ident">std</span>::{
-    <span class="ident">convert</span>::{<span class="ident">TryFrom</span>, <span class="ident">TryInto</span>},
     <span class="ident">path</span>::{<span class="ident">Path</span>, <span class="ident">PathBuf</span>},
+    <span class="ident">str</span>::<span class="ident">FromStr</span>,
 };
 
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>)]</span>
@@ -335,10 +321,10 @@
 
 <span class="kw">struct</span> <span class="ident">TestThreads</span>(<span class="ident">usize</span>);
 
-<span class="kw">impl</span> <span class="ident">TryFrom</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">TestThreads</span> {
-    <span class="kw">type</span> <span class="ident">Error</span> <span class="op">=</span> <span class="ident">Box</span><span class="op">&lt;</span><span class="kw">dyn</span> <span class="ident">std</span>::<span class="ident">error</span>::<span class="ident">Error</span><span class="op">&gt;</span>;
+<span class="kw">impl</span> <span class="ident">FromStr</span> <span class="kw">for</span> <span class="ident">TestThreads</span> {
+    <span class="kw">type</span> <span class="prelude-val">Err</span> <span class="op">=</span> <span class="ident">Box</span><span class="op">&lt;</span><span class="kw">dyn</span> <span class="ident">std</span>::<span class="ident">error</span>::<span class="ident">Error</span><span class="op">&gt;</span>;
 
-    <span class="kw">fn</span> <span class="ident">try_from</span>(<span class="ident">s</span>: <span class="ident">String</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="self">Self</span>::<span class="ident">Error</span><span class="op">&gt;</span> {
+    <span class="kw">fn</span> <span class="ident">from_str</span>(<span class="ident">s</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="self">Self</span>::<span class="prelude-val">Err</span><span class="op">&gt;</span> {
         <span class="kw">let</span> <span class="ident">n</span> <span class="op">=</span> <span class="ident">s</span>.<span class="ident">parse</span>().<span class="ident">map_err</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> {
             <span class="macro">format</span><span class="macro">!</span>(
                 <span class="string">&quot;argument for --test-threads must be a number &gt; 0 (error: {})&quot;</span>,
@@ -359,11 +345,11 @@
     <span class="ident">Never</span>,
 }
 
-<span class="kw">impl</span> <span class="ident">TryFrom</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">ColorConfig</span> {
-    <span class="kw">type</span> <span class="ident">Error</span> <span class="op">=</span> <span class="ident">Box</span><span class="op">&lt;</span><span class="kw">dyn</span> <span class="ident">std</span>::<span class="ident">error</span>::<span class="ident">Error</span><span class="op">&gt;</span>;
+<span class="kw">impl</span> <span class="ident">FromStr</span> <span class="kw">for</span> <span class="ident">ColorConfig</span> {
+    <span class="kw">type</span> <span class="prelude-val">Err</span> <span class="op">=</span> <span class="ident">Box</span><span class="op">&lt;</span><span class="kw">dyn</span> <span class="ident">std</span>::<span class="ident">error</span>::<span class="ident">Error</span><span class="op">&gt;</span>;
 
-    <span class="kw">fn</span> <span class="ident">try_from</span>(<span class="ident">s</span>: <span class="ident">String</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="self">Self</span>::<span class="ident">Error</span><span class="op">&gt;</span> {
-        <span class="kw">match</span> <span class="ident">s</span>.<span class="ident">as_str</span>() {
+    <span class="kw">fn</span> <span class="ident">from_str</span>(<span class="ident">s</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="self">Self</span>::<span class="prelude-val">Err</span><span class="op">&gt;</span> {
+        <span class="kw">match</span> <span class="ident">s</span> {
             <span class="string">&quot;auto&quot;</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">ColorConfig</span>::<span class="ident">Auto</span>),
             <span class="string">&quot;always&quot;</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">ColorConfig</span>::<span class="ident">Always</span>),
             <span class="string">&quot;never&quot;</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">ColorConfig</span>::<span class="ident">Never</span>),
@@ -383,11 +369,11 @@
     <span class="ident">Json</span>,
 }
 
-<span class="kw">impl</span> <span class="ident">TryFrom</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">OutputFormat</span> {
-    <span class="kw">type</span> <span class="ident">Error</span> <span class="op">=</span> <span class="ident">Box</span><span class="op">&lt;</span><span class="kw">dyn</span> <span class="ident">std</span>::<span class="ident">error</span>::<span class="ident">Error</span><span class="op">&gt;</span>;
+<span class="kw">impl</span> <span class="ident">FromStr</span> <span class="kw">for</span> <span class="ident">OutputFormat</span> {
+    <span class="kw">type</span> <span class="prelude-val">Err</span> <span class="op">=</span> <span class="ident">Box</span><span class="op">&lt;</span><span class="kw">dyn</span> <span class="ident">std</span>::<span class="ident">error</span>::<span class="ident">Error</span><span class="op">&gt;</span>;
 
-    <span class="kw">fn</span> <span class="ident">try_from</span>(<span class="ident">s</span>: <span class="ident">String</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="self">Self</span>::<span class="ident">Error</span><span class="op">&gt;</span> {
-        <span class="kw">match</span> <span class="ident">s</span>.<span class="ident">as_str</span>() {
+    <span class="kw">fn</span> <span class="ident">from_str</span>(<span class="ident">s</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="self">Self</span>::<span class="prelude-val">Err</span><span class="op">&gt;</span> {
+        <span class="kw">match</span> <span class="ident">s</span> {
             <span class="string">&quot;pretty&quot;</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">OutputFormat</span>::<span class="ident">Pretty</span>),
             <span class="string">&quot;terse&quot;</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">OutputFormat</span>::<span class="ident">Terse</span>),
             <span class="string">&quot;json&quot;</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">Ok</span>(<span class="ident">OutputFormat</span>::<span class="ident">Json</span>),
@@ -413,35 +399,33 @@
         <span class="ident">opts</span>.<span class="ident">optopt</span>(
             <span class="string">&quot;&quot;</span>,
             <span class="string">&quot;logfile&quot;</span>,
-            <span class="string">&quot;Write logs to the specified file instead \
-             of stdout&quot;</span>,
+            <span class="string">&quot;Write logs to the specified file instead of stdout.
+             (placeholder. not implemented yet)&quot;</span>,
             <span class="string">&quot;PATH&quot;</span>,
         );
         <span class="ident">opts</span>.<span class="ident">optflag</span>(
             <span class="string">&quot;&quot;</span>,
             <span class="string">&quot;nocapture&quot;</span>,
-            <span class="string">&quot;don&#39;t capture stdout/stderr of each \
-             task, allow printing directly&quot;</span>,
+            <span class="string">&quot;don&#39;t capture stdout/stderr of each task, allow printing directly.
+             (placeholder, not implemented yet)&quot;</span>,
         );
         <span class="ident">opts</span>.<span class="ident">optopt</span>(
             <span class="string">&quot;&quot;</span>,
             <span class="string">&quot;test-threads&quot;</span>,
-            <span class="string">&quot;Number of threads used for running tests \
-             in parallel&quot;</span>,
+            <span class="string">&quot;Number of threads used for running tests in parallel.
+             (placeholder, not implemented yet)&quot;</span>,
             <span class="string">&quot;n_threads&quot;</span>,
         );
         <span class="ident">opts</span>.<span class="ident">optmulti</span>(
             <span class="string">&quot;&quot;</span>,
             <span class="string">&quot;skip&quot;</span>,
-            <span class="string">&quot;Skip tests whose names contain FILTER (this flag can \
-             be used multiple times)&quot;</span>,
+            <span class="string">&quot;Skip tests whose names contain FILTER (this flag can be used multiple times)&quot;</span>,
             <span class="string">&quot;FILTER&quot;</span>,
         );
         <span class="ident">opts</span>.<span class="ident">optflag</span>(
             <span class="string">&quot;q&quot;</span>,
             <span class="string">&quot;quiet&quot;</span>,
-            <span class="string">&quot;Display one character per test instead of one line. \
-             Alias to --format=terse&quot;</span>,
+            <span class="string">&quot;Display one character per test instead of one line. Alias to --format=terse&quot;</span>,
         );
         <span class="ident">opts</span>.<span class="ident">optflag</span>(
             <span class="string">&quot;&quot;</span>,
@@ -463,7 +447,7 @@
             <span class="string">&quot;Configure formatting of output:
                 pretty = Print verbose output;
                 terse  = Display one character per test;
-                json   = Output a json document&quot;</span>,
+                json   = Output a json document (placeholder, not implemented yet)&quot;</span>,
             <span class="string">&quot;pretty|terse|json&quot;</span>,
         );
 
@@ -481,15 +465,7 @@
             <span class="string">r#&quot;{usage}
     
     The FILTER string is tested against the name of all tests, and only those
-    tests whose names contain the filter are run.
-    
-    By default, all tests are run in parallel. This can be altered with the
-    --test-threads flag or the RUST_TEST_THREADS environment variable when running
-    tests (set it to 1).
-    
-    All tests have their standard output and standard error captured by default.
-    This can be overridden with the --nocapture flag or setting RUST_TEST_NOCAPTURE
-    environment variable to a value other than &quot;0&quot;. Logging is not captured by default.&quot;#</span>,
+    tests whose names contain the filter are run.&quot;#</span>,
             <span class="ident">usage</span> <span class="op">=</span> <span class="self">self</span>.<span class="number">0</span>.<span class="ident">usage</span>(<span class="kw-2">&amp;</span><span class="ident">message</span>)
         );
     }
@@ -506,7 +482,7 @@
         <span class="kw">let</span> <span class="ident">quiet</span> <span class="op">=</span> <span class="ident">matches</span>.<span class="ident">opt_present</span>(<span class="string">&quot;quiet&quot;</span>);
         <span class="kw">let</span> <span class="ident">filter_exact</span> <span class="op">=</span> <span class="ident">matches</span>.<span class="ident">opt_present</span>(<span class="string">&quot;exact&quot;</span>);
         <span class="kw">let</span> <span class="ident">list</span> <span class="op">=</span> <span class="ident">matches</span>.<span class="ident">opt_present</span>(<span class="string">&quot;list&quot;</span>);
-        <span class="kw">let</span> <span class="ident">logfile</span> <span class="op">=</span> <span class="ident">matches</span>.<span class="ident">opt_str</span>(<span class="string">&quot;logfile&quot;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="ident">s</span><span class="op">|</span> <span class="ident">PathBuf</span>::<span class="ident">from</span>(<span class="kw-2">&amp;</span><span class="ident">s</span>));
+        <span class="kw">let</span> <span class="ident">logfile</span> <span class="op">=</span> <span class="ident">matches</span>.<span class="ident">opt_get</span>(<span class="string">&quot;logfile&quot;</span>)<span class="question-mark">?</span>;
 
         <span class="kw">let</span> <span class="ident">run_benchmarks</span> <span class="op">=</span> <span class="ident">matches</span>.<span class="ident">opt_present</span>(<span class="string">&quot;bench&quot;</span>);
         <span class="kw">let</span> <span class="ident">run_tests</span> <span class="op">=</span> <span class="op">!</span><span class="ident">run_benchmarks</span> <span class="op">|</span><span class="op">|</span> <span class="ident">matches</span>.<span class="ident">opt_present</span>(<span class="string">&quot;test&quot;</span>);
@@ -517,21 +493,17 @@
                 .<span class="ident">map_or</span>(<span class="bool-val">false</span>, <span class="op">|</span><span class="ident">val</span><span class="op">|</span> <span class="kw-2">&amp;</span><span class="ident">val</span> <span class="op">!</span><span class="op">=</span> <span class="string">&quot;0&quot;</span>)
         };
 
-        <span class="kw">let</span> <span class="ident">test_threads</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">matches</span>.<span class="ident">opt_str</span>(<span class="string">&quot;test-threads&quot;</span>) {
-            <span class="prelude-val">Some</span>(<span class="ident">n_str</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">n_str</span>.<span class="ident">try_into</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">TestThreads</span>(<span class="ident">n</span>)<span class="op">|</span> <span class="prelude-val">Some</span>(<span class="ident">n</span>))<span class="question-mark">?</span>,
-            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="prelude-val">None</span>,
-        };
+        <span class="kw">let</span> <span class="ident">test_threads</span> <span class="op">=</span> <span class="ident">matches</span>.<span class="ident">opt_get</span>(<span class="string">&quot;test-threads&quot;</span>)<span class="question-mark">?</span>.<span class="ident">map</span>(<span class="op">|</span><span class="ident">TestThreads</span>(<span class="ident">n</span>)<span class="op">|</span> <span class="ident">n</span>);
 
-        <span class="kw">let</span> <span class="ident">color</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">matches</span>.<span class="ident">opt_str</span>(<span class="string">&quot;color&quot;</span>) {
-            <span class="prelude-val">Some</span>(<span class="ident">s</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">s</span>.<span class="ident">try_into</span>()<span class="question-mark">?</span>,
-            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">ColorConfig</span>::<span class="ident">Auto</span>,
-        };
+        <span class="kw">let</span> <span class="ident">color</span> <span class="op">=</span> <span class="ident">matches</span>.<span class="ident">opt_get</span>(<span class="string">&quot;color&quot;</span>)<span class="question-mark">?</span>.<span class="ident">unwrap_or</span>(<span class="ident">ColorConfig</span>::<span class="ident">Auto</span>);
 
-        <span class="kw">let</span> <span class="ident">format</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">matches</span>.<span class="ident">opt_str</span>(<span class="string">&quot;format&quot;</span>) {
-            <span class="prelude-val">Some</span>(<span class="ident">s</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">s</span>.<span class="ident">try_into</span>()<span class="question-mark">?</span>,
-            <span class="prelude-val">None</span> <span class="kw">if</span> <span class="ident">quiet</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">OutputFormat</span>::<span class="ident">Terse</span>,
-            <span class="prelude-val">None</span> <span class="op">=</span><span class="op">&gt;</span> <span class="ident">OutputFormat</span>::<span class="ident">Pretty</span>,
-        };
+        <span class="kw">let</span> <span class="ident">format</span> <span class="op">=</span> <span class="ident">matches</span>.<span class="ident">opt_get</span>(<span class="string">&quot;format&quot;</span>)<span class="question-mark">?</span>.<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> {
+            <span class="kw">if</span> <span class="ident">quiet</span> {
+                <span class="ident">OutputFormat</span>::<span class="ident">Terse</span>
+            } <span class="kw">else</span> {
+                <span class="ident">OutputFormat</span>::<span class="ident">Pretty</span>
+            }
+        });
 
         <span class="kw">let</span> <span class="ident">skip</span> <span class="op">=</span> <span class="ident">matches</span>.<span class="ident">opt_strs</span>(<span class="string">&quot;skip&quot;</span>);
 
