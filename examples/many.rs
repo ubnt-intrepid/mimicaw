@@ -1,6 +1,6 @@
 use futures::executor::block_on;
 use futures_timer::Delay;
-use mimicaw::{Outcome, Test};
+use mimicaw::{Args, Outcome, Test};
 use rand::{
     distributions::{Bernoulli, Distribution},
     seq::IteratorRandom,
@@ -8,7 +8,7 @@ use rand::{
 use std::time::Duration;
 
 fn main() {
-    let args = mimicaw::parse_args();
+    let args = Args::from_env().unwrap_or_else(|st| st.exit());
 
     let mut rng = rand::thread_rng();
     let bernoulli = Bernoulli::new(0.8).unwrap();
@@ -26,7 +26,7 @@ fn main() {
         Test::test(&name, (delay, outcome))
     });
 
-    let status = block_on(mimicaw::run_tests(
+    block_on(mimicaw::run_tests(
         &args,
         tests,
         |_desc, (delay, outcome)| {
@@ -35,6 +35,6 @@ fn main() {
                 outcome
             })
         },
-    ));
-    std::process::exit(status);
+    ))
+    .exit();
 }

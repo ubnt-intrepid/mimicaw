@@ -1,12 +1,12 @@
 use async_std::task;
 use futures::prelude::*;
 use futures_timer::Delay;
-use mimicaw::{Outcome, Test};
+use mimicaw::{Args, Outcome, Test};
 use std::time::Duration;
 
 #[async_std::main]
 async fn main() {
-    let args = mimicaw::parse_args();
+    let args = Args::from_env().unwrap_or_else(|st| st.exit());
 
     let tests = vec![
         Test::test("case1", {
@@ -44,6 +44,5 @@ async fn main() {
         }),
     ];
 
-    let status = mimicaw::run_tests(&args, tests, |_, fut| fut).await;
-    std::process::exit(status);
+    mimicaw::run_tests(&args, tests, |_, fut| fut).await.exit()
 }

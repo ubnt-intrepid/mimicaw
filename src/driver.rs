@@ -2,6 +2,7 @@ use crate::{
     args::Args,
     printer::Printer,
     test::{Outcome, OutcomeKind, Test, TestDesc, TestKind},
+    ExitStatus,
 };
 use futures_core::{
     future::Future,
@@ -59,7 +60,7 @@ impl<'a> TestDriver<'a> {
         Self { args, printer }
     }
 
-    pub(crate) async fn run_tests<D, I, F, R>(&self, tests: I, runner: F) -> i32
+    pub(crate) async fn run_tests<D, I, F, R>(&self, tests: I, runner: F) -> ExitStatus
     where
         I: IntoIterator<Item = Test<D>>,
         F: FnMut(&TestDesc, D) -> R,
@@ -99,7 +100,7 @@ impl<'a> TestDriver<'a> {
         if self.args.list {
             self.printer
                 .print_list(pending_tests.iter().map(|test| &test.desc));
-            return 0;
+            return ExitStatus::OK;
         }
 
         let _ = writeln!(self.printer.term(), "running {} tests", pending_tests.len());
@@ -173,9 +174,9 @@ impl<'a> TestDriver<'a> {
         );
 
         if failed_tests.is_empty() {
-            0
+            ExitStatus::OK
         } else {
-            crate::ERROR_STATUS_CODE
+            ExitStatus::FAILED
         }
     }
 }

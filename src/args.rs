@@ -1,26 +1,11 @@
 #![allow(missing_docs)]
 
+use crate::ExitStatus;
 use getopts::Options;
 use std::{
     path::{Path, PathBuf},
     str::FromStr,
 };
-
-/// Parse command line arguments.
-pub fn parse_args() -> Args {
-    let parser = Parser::new();
-    match parser.parse_args() {
-        Ok(Some(args)) => args,
-        Ok(None) => {
-            parser.print_usage();
-            std::process::exit(0);
-        }
-        Err(err) => {
-            eprintln!("CLI argument error: {}", err);
-            std::process::exit(crate::ERROR_STATUS_CODE);
-        }
-    }
-}
 
 /// Command line arguments.
 #[derive(Debug)]
@@ -41,6 +26,22 @@ pub struct Args {
 }
 
 impl Args {
+    /// Parse command line arguments.
+    pub fn from_env() -> Result<Self, ExitStatus> {
+        let parser = Parser::new();
+        match parser.parse_args() {
+            Ok(Some(args)) => Ok(args),
+            Ok(None) => {
+                parser.print_usage();
+                Err(ExitStatus::OK)
+            }
+            Err(err) => {
+                eprintln!("CLI argument error: {}", err);
+                Err(ExitStatus::FAILED)
+            }
+        }
+    }
+
     pub(crate) fn is_filtered(&self, name: &str) -> bool {
         if let Some(ref filter) = self.filter {
             if self.filter_exact && name != filter {
