@@ -1,6 +1,6 @@
 //! A library for writing asynchronous tests.
 
-#![doc(html_root_url = "https://docs.rs/mimicaw/0.0.2")]
+#![doc(html_root_url = "https://docs.rs/mimicaw/0.1.0")]
 #![deny(missing_docs, unsafe_code)]
 #![forbid(clippy::unimplemented, clippy::todo)]
 
@@ -81,4 +81,9 @@ pub async fn run_tests<D>(
 #[test]
 fn test_html_root_url() {
     version_sync::assert_html_root_url_updated!("src/lib.rs");
+}
+
+#[test]
+fn test_readme_deps() {
+    version_sync::assert_markdown_deps_updated!("README.md");
 }
