@@ -1,6 +1,6 @@
 //! A tiny test framework for asynchronous integration tests.
 
-#![doc(html_root_url = "https://docs.rs/mimicaw/0.0.1")]
+#![doc(html_root_url = "https://docs.rs/mimicaw/0.0.2")]
 #![deny(missing_docs)]
 #![forbid(clippy::unimplemented, clippy::todo)]
 

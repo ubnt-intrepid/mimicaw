@@ -1,6 +1,6 @@
 [package]
 name = "mimicaw"
-version = "0.0.1"
+version = "0.0.2"
 description = """
 A tiny test framework for asynchronous integration tests.
 """
