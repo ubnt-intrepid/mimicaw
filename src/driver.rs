@@ -155,9 +155,9 @@ impl TestDriver {
             }
         }
 
-        let mut status = console::style("ok").green();
+        let mut status = printer.styled("ok").green();
         if !failed_tests.is_empty() {
-            status = console::style("FAILED").red();
+            status = printer.styled("FAILED").red();
             let _ = writeln!(&mut printer.term());
             let _ = writeln!(&mut printer.term(), "failures:\n");
             for (name, msg) in &failed_tests {

@@ -1,8 +1,8 @@
 use crate::{
-    args::{Args, OutputFormat},
+    args::{Args, ColorConfig, OutputFormat},
     test::{Outcome, OutcomeKind, TestDesc, TestKind},
 };
-use console::Term;
+use console::{Style, StyledObject, Term};
 use std::{
     io::Write,
     sync::atomic::{AtomicUsize, Ordering},
@@ -12,6 +12,7 @@ pub(crate) struct Printer {
     term: Term,
     name_length: AtomicUsize,
     format: OutputFormat,
+    style: Style,
 }
 
 impl Printer {
@@ -20,6 +21,15 @@ impl Printer {
             term: Term::buffered_stdout(),
             name_length: AtomicUsize::new(0),
             format: args.format,
+            style: {
+                let mut style = Style::new();
+                match args.color {
+                    ColorConfig::Always => style = style.force_styling(true),
+                    ColorConfig::Never => style = style.force_styling(false),
+                    _ => (),
+                }
+                style
+            },
         }
     }
 
@@ -29,6 +39,10 @@ impl Printer {
 
     pub(crate) fn set_name_length(&self, value: usize) {
         self.name_length.store(value, Ordering::SeqCst);
+    }
+
+    pub(crate) fn styled<D>(&self, val: D) -> StyledObject<D> {
+        self.style.apply_to(val)
     }
 
     pub(crate) fn print_list(&self, tests: impl IntoIterator<Item = impl AsRef<TestDesc>>) {
@@ -80,7 +94,7 @@ impl Printer {
             OutputFormat::Terse => self.print_result_terse(desc, outcome),
             OutputFormat::Json => eprintln!(
                 "{warning}: JSON format is not supported",
-                warning = console::style("warning").yellow()
+                warning = self.styled("warning").yellow()
             ),
         }
     }
@@ -97,7 +111,7 @@ impl Printer {
                         "test {0:<1$} ... {2}",
                         name,
                         name_length,
-                        console::style("ok").green()
+                        self.styled("ok").green()
                     );
                 }
                 OutcomeKind::Failed => {
@@ -106,7 +120,7 @@ impl Printer {
                         "test {0:<1$} ... {2}",
                         name,
                         name_length,
-                        console::style("FAILED").red()
+                        self.styled("FAILED").red()
                     );
                 }
                 OutcomeKind::Measured { average, variance } => {
@@ -115,7 +129,7 @@ impl Printer {
                         "test {0:<1$} ... {2}: {3:>11} ns/iter (+/- {4})",
                         name,
                         name_length,
-                        console::style("bench").cyan(),
+                        self.styled("bench").cyan(),
                         average,
                         variance
                     );
@@ -127,7 +141,7 @@ impl Printer {
                     "test {0:<1$} ... {2}",
                     name,
                     name_length,
-                    console::style("ignored").yellow()
+                    self.styled("ignored").yellow()
                 );
             }
         }
