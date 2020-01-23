@@ -10,12 +10,13 @@ use futures_core::{
 };
 use futures_util::{ready, stream::StreamExt};
 use pin_project_lite::pin_project;
+use pin_utils::pin_mut;
 use std::{collections::HashSet, io::Write, pin::Pin};
 
 /// The runner of test cases.
 pub trait TestRunner<D> {
     /// The type of future returned from `run`.
-    type Future: Future<Output = Outcome> + Unpin;
+    type Future: Future<Output = Outcome>;
 
     /// Run a test case.
     fn run(&mut self, desc: TestDesc, data: D) -> Self::Future;
@@ -24,7 +25,7 @@ pub trait TestRunner<D> {
 impl<F, D, R> TestRunner<D> for F
 where
     F: FnMut(TestDesc, D) -> R,
-    R: Future<Output = Outcome> + Unpin,
+    R: Future<Output = Outcome>,
 {
     type Future = R;
 
@@ -46,27 +47,29 @@ pin_project! {
 }
 
 impl<D, R> PendingTest<'_, D, R> {
-    fn start<F>(&mut self, args: &Args, name_length: usize, runner: &mut F)
+    fn start<F>(self: Pin<&mut Self>, args: &Args, name_length: usize, runner: &mut F)
     where
         F: TestRunner<D, Future = R>,
-        R: Future<Output = Outcome> + Unpin,
+        R: Future<Output = Outcome>,
     {
-        self.name_length = name_length;
+        let mut me = self.project();
 
-        let ignored = (self.desc.ignored() && !args.run_ignored)
-            || match self.desc.kind() {
+        *me.name_length = name_length;
+
+        let ignored = (me.desc.ignored() && !args.run_ignored)
+            || match me.desc.kind() {
                 TestKind::Test => !args.run_tests,
                 TestKind::Bench => !args.run_benchmarks,
             };
 
-        let context = self
+        let context = me
             .context
             .take()
             .expect("the context has already been used");
 
         if !ignored {
-            self.test_case
-                .replace(runner.run(self.desc.clone(), context));
+            let test_case = runner.run(me.desc.clone(), context);
+            me.test_case.set(Some(test_case));
         }
     }
 }
@@ -96,6 +99,41 @@ where
     }
 }
 
+pin_project! {
+    struct PendingTests<'a, D, R> {
+        #[pin]
+        inner: Vec<PendingTest<'a, D, R>>,
+    }
+}
+
+impl<'a, D, R> PendingTests<'a, D, R> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    #[inline]
+    fn iter(&self) -> impl Iterator<Item = &PendingTest<'a, D, R>> + '_ {
+        self.inner.iter()
+    }
+
+    fn iter_pin_mut(
+        self: Pin<&mut Self>,
+    ) -> impl Iterator<Item = Pin<&mut PendingTest<'a, D, R>>> + '_ {
+        let me = self.project();
+
+        // Safety:
+        // * The mutable borrow take out here is used only for creating `std::slice::IterMut`,
+        //   and the addition or deletion of element(s) never occurs.
+        // * `IterMut` does not move the element during scanning.
+        #[allow(unsafe_code)]
+        unsafe {
+            let inner = me.inner.get_unchecked_mut();
+            inner.iter_mut().map(|test| Pin::new_unchecked(test))
+        }
+    }
+}
+
 pub(crate) struct TestDriver<'a> {
     args: &'a Args,
     printer: Printer,
@@ -114,7 +152,7 @@ impl<'a> TestDriver<'a> {
     ) -> ExitStatus {
         let mut runner = runner;
 
-        let (mut pending_tests, num_filtered_out) = {
+        let (pending_tests, num_filtered_out) = {
             let mut pending_tests = vec![];
             let mut num_filtered_out = 0_usize;
             let mut test_names = HashSet::new();
@@ -140,8 +178,15 @@ impl<'a> TestDriver<'a> {
                 });
             }
 
-            (pending_tests, num_filtered_out)
+            (
+                PendingTests {
+                    inner: pending_tests,
+                },
+                num_filtered_out,
+            )
         };
+
+        pin_mut!(pending_tests);
 
         if self.args.list {
             self.printer
@@ -157,9 +202,10 @@ impl<'a> TestDriver<'a> {
             .max()
             .unwrap_or(0);
 
-        futures_util::stream::iter(pending_tests.iter_mut()) //
-            .for_each_concurrent(None, |test: &mut _| {
-                test.start(&self.args, max_name_length, &mut runner);
+        futures_util::stream::iter(pending_tests.as_mut().iter_pin_mut()) //
+            .for_each_concurrent(None, |mut test| {
+                test.as_mut()
+                    .start(&self.args, max_name_length, &mut runner);
                 test
             })
             .await;
@@ -168,9 +214,9 @@ impl<'a> TestDriver<'a> {
         let mut failed_tests = vec![];
         let mut num_measured = 0;
         let mut num_ignored = 0;
-        for test in pending_tests {
+        for test in pending_tests.iter() {
             match test.outcome {
-                Some(outcome) => match outcome.kind() {
+                Some(ref outcome) => match outcome.kind() {
                     OutcomeKind::Passed => num_passed += 1,
                     OutcomeKind::Failed => {
                         failed_tests.push((test.desc.clone(), outcome.err_msg()))

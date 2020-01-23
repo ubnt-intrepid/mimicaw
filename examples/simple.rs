@@ -12,13 +12,13 @@ fn main() {
     ];
 
     block_on(mimicaw::run_tests(&args, tests, |_desc, data| {
-        Box::pin(async move {
+        async move {
             match data {
                 "foo" | "baz" => Outcome::passed(),
                 "bar" => Outcome::failed().error_message("`bar' is forbidden"),
                 data => Outcome::failed().error_message(format!("unknown data: {}", data)),
             }
-        })
+        }
     }))
     .exit()
 }

@@ -20,6 +20,7 @@ futures-util = { version = "0.3", features = [ "std" ], default-features = false
 getopts = "0.2"
 num-format = "0.4"
 pin-project-lite = "0.1"
+pin-utils = "0.1.0-alpha.4"
 
 [dev-dependencies]
 async-std = { version = "1", features = ["attributes"] }

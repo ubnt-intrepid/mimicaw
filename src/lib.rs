@@ -1,7 +1,7 @@
 //! A library for writing asynchronous tests.
 
 #![doc(html_root_url = "https://docs.rs/mimicaw/0.0.2")]
-#![deny(missing_docs)]
+#![deny(missing_docs, unsafe_code)]
 #![forbid(clippy::unimplemented, clippy::todo)]
 
 mod args;

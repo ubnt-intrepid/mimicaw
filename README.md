@@ -55,13 +55,13 @@ let tests = vec![
 // Each test result is asynchronous and a future is returned
 // to acquire the result.
 let runner = |_desc: TestDesc, data: &str| {
-    Box::pin(async move {
+    async move {
         match data {
             "foo" | "baz" => Outcome::passed(),
             "bar" => Outcome::failed().error_message("`bar' is forbidden"),
             data => Outcome::failed().error_message(format!("unknown data: {}", data)),
         }
-    })
+    }
 };
 
 // Run the process of test suite.
