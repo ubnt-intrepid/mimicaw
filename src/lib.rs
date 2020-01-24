@@ -57,11 +57,13 @@ status.exit()
 mod args;
 mod driver;
 mod printer;
+mod report;
 mod test;
 
 pub use crate::{
     args::{Args, ColorConfig, OutputFormat},
     driver::TestRunner,
+    report::Report,
     test::{Outcome, Test, TestDesc},
 };
 
@@ -124,11 +126,20 @@ pub async fn run_tests<D>(
     tests: impl IntoIterator<Item = Test<D>>,
     runner: impl TestRunner<D>,
 ) -> ExitStatus {
-    let driver = TestDriver::new(&args);
-    match driver.run_tests(tests, runner).await {
+    match run_tests_with_report(args, tests, runner).await {
         Ok(report) => report.status(),
         Err(status) => status,
     }
+}
+
+/// Run a test suite and report the summary.
+pub async fn run_tests_with_report<D>(
+    args: &Args,
+    tests: impl IntoIterator<Item = Test<D>>,
+    runner: impl TestRunner<D>,
+) -> Result<Report, ExitStatus> {
+    let driver = TestDriver::new(&args);
+    driver.run_tests(tests, runner).await
 }
 
 #[test]

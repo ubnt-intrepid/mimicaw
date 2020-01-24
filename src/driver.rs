@@ -1,6 +1,7 @@
 use crate::{
     args::Args,
     printer::Printer,
+    report::Report,
     test::{Outcome, OutcomeKind, Test, TestDesc, TestKind},
     ExitStatus,
 };
@@ -10,13 +11,7 @@ use futures_core::{
 };
 use futures_util::{ready, stream::StreamExt};
 use pin_project_lite::pin_project;
-use std::{
-    borrow::Cow,
-    collections::HashSet,
-    io::{self, Write},
-    pin::Pin,
-    sync::Arc,
-};
+use std::{collections::HashSet, io::Write, pin::Pin};
 
 /// The runner of test cases.
 pub trait TestRunner<D> {
@@ -180,7 +175,7 @@ impl<'a> TestDriver<'a> {
 
         let mut passed = vec![];
         let mut failed = vec![];
-        let mut benches = vec![];
+        let mut measured = vec![];
         let mut ignored = vec![];
         for test in &pending_tests {
             match test.outcome {
@@ -188,7 +183,7 @@ impl<'a> TestDriver<'a> {
                     OutcomeKind::Passed => passed.push(test.desc.clone()),
                     OutcomeKind::Failed => failed.push((test.desc.clone(), outcome.err_msg())),
                     OutcomeKind::Measured { average, variance } => {
-                        benches.push((test.desc.clone(), (*average, *variance)))
+                        measured.push((test.desc.clone(), (*average, *variance)))
                     }
                 },
                 None => ignored.push(test.desc.clone()),
@@ -198,7 +193,7 @@ impl<'a> TestDriver<'a> {
         let report = Report {
             passed,
             failed,
-            benches,
+            measured,
             ignored,
             filtered_out: filtered_out_tests
                 .into_iter()
@@ -211,60 +206,5 @@ impl<'a> TestDriver<'a> {
         let _ = report.print(&self.printer);
 
         Ok(report)
-    }
-}
-
-pub(crate) struct Report {
-    passed: Vec<TestDesc>,
-    failed: Vec<(TestDesc, Option<Arc<Cow<'static, str>>>)>,
-    benches: Vec<(TestDesc, (u64, u64))>,
-    ignored: Vec<TestDesc>,
-    filtered_out: Vec<TestDesc>,
-}
-
-impl Report {
-    pub(crate) fn status(&self) -> ExitStatus {
-        if self.failed.is_empty() {
-            ExitStatus::OK
-        } else {
-            ExitStatus::FAILED
-        }
-    }
-
-    fn print(&self, printer: &Printer) -> io::Result<()> {
-        let mut status = printer.styled("ok").green();
-
-        if !self.failed.is_empty() {
-            status = printer.styled("FAILED").red();
-            writeln!(printer.term())?;
-            writeln!(printer.term(), "failures:")?;
-            for (desc, msg) in &self.failed {
-                writeln!(printer.term(), "---- {} ----", desc.name())?;
-                if let Some(msg) = msg {
-                    printer.term().write_str(&*msg)?;
-                    if msg.chars().last().map_or(true, |c| c != '\n') {
-                        printer.term().write_str("\n")?;
-                    }
-                }
-            }
-
-            writeln!(printer.term())?;
-            writeln!(printer.term(), "failures:")?;
-            for (desc, _) in &self.failed {
-                writeln!(printer.term(), "    {}", desc.name())?;
-            }
-        }
-
-        writeln!(printer.term())?;
-        writeln!(printer.term(), "test result: {status}. {passed} passed; {failed} failed; {ignored} ignored; {measured} measured; {filtered_out} filtered out",
-            status = status,
-            passed = self.passed.len(),
-            failed = self.failed.len(),
-            ignored = self.ignored.len(),
-            measured = self.benches.len(),
-            filtered_out = self.filtered_out.len(),
-        )?;
-
-        Ok(())
     }
 }
