@@ -84,6 +84,10 @@ impl<D> Test<D> {
         self
     }
 
+    pub(crate) fn desc(&self) -> &TestDesc {
+        &self.desc
+    }
+
     pub(crate) fn deconstruct(self) -> (TestDesc, D) {
         (self.desc, self.data)
     }
@@ -93,7 +97,7 @@ impl<D> Test<D> {
 #[derive(Debug)]
 pub struct Outcome {
     kind: OutcomeKind,
-    err_msg: Option<Cow<'static, str>>,
+    err_msg: Option<Arc<Cow<'static, str>>>,
 }
 
 impl Outcome {
@@ -124,7 +128,7 @@ impl Outcome {
     /// Specify the error message.
     pub fn error_message(self, err_msg: impl Into<Cow<'static, str>>) -> Self {
         Self {
-            err_msg: Some(err_msg.into()),
+            err_msg: Some(Arc::new(err_msg.into())),
             ..self
         }
     }
@@ -133,7 +137,7 @@ impl Outcome {
         &self.kind
     }
 
-    pub(crate) fn err_msg(&self) -> Option<Cow<'static, str>> {
+    pub(crate) fn err_msg(&self) -> Option<Arc<Cow<'static, str>>> {
         self.err_msg.clone()
     }
 }

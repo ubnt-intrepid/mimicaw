@@ -10,8 +10,13 @@ use futures_core::{
 };
 use futures_util::{ready, stream::StreamExt};
 use pin_project_lite::pin_project;
-use pin_utils::pin_mut;
-use std::{collections::HashSet, io::Write, pin::Pin};
+use std::{
+    borrow::Cow,
+    collections::HashSet,
+    io::{self, Write},
+    pin::Pin,
+    sync::Arc,
+};
 
 /// The runner of test cases.
 pub trait TestRunner<D> {
@@ -99,41 +104,6 @@ where
     }
 }
 
-pin_project! {
-    struct PendingTests<'a, D, R> {
-        #[pin]
-        inner: Vec<PendingTest<'a, D, R>>,
-    }
-}
-
-impl<'a, D, R> PendingTests<'a, D, R> {
-    #[inline]
-    fn len(&self) -> usize {
-        self.inner.len()
-    }
-
-    #[inline]
-    fn iter(&self) -> impl Iterator<Item = &PendingTest<'a, D, R>> + '_ {
-        self.inner.iter()
-    }
-
-    fn iter_pin_mut(
-        self: Pin<&mut Self>,
-    ) -> impl Iterator<Item = Pin<&mut PendingTest<'a, D, R>>> + '_ {
-        let me = self.project();
-
-        // Safety:
-        // * The mutable borrow take out here is used only for creating `std::slice::IterMut`,
-        //   and the addition or deletion of element(s) never occurs.
-        // * `IterMut` does not move the element during scanning.
-        #[allow(unsafe_code)]
-        unsafe {
-            let inner = me.inner.get_unchecked_mut();
-            inner.iter_mut().map(|test| Pin::new_unchecked(test))
-        }
-    }
-}
-
 pub(crate) struct TestDriver<'a> {
     args: &'a Args,
     printer: Printer,
@@ -149,49 +119,47 @@ impl<'a> TestDriver<'a> {
         &self,
         tests: impl IntoIterator<Item = Test<D>>,
         runner: impl TestRunner<D>,
-    ) -> ExitStatus {
+    ) -> Result<Report, ExitStatus> {
         let mut runner = runner;
 
-        let (pending_tests, num_filtered_out) = {
-            let mut pending_tests = vec![];
-            let mut num_filtered_out = 0_usize;
-            let mut test_names = HashSet::new();
-
-            for test in tests {
-                let (desc, context) = test.deconstruct();
-                if !test_names.insert(desc.name().to_string()) {
-                    panic!("the test name is conflicted");
-                }
-
-                if self.args.is_filtered(desc.name()) {
-                    num_filtered_out += 1;
-                    continue;
-                }
-
-                pending_tests.push(PendingTest {
-                    desc,
-                    context: Some(context),
-                    test_case: None,
-                    outcome: None,
-                    printer: &self.printer,
-                    name_length: 0,
-                });
+        // First, convert each test case to PendingTest for tracking the running state.
+        // Test cases that satisfy the skip condition are filtered out here.
+        let mut pending_tests = vec![];
+        let mut filtered_out_tests = vec![];
+        let mut unique_test_names = HashSet::new();
+        for test in tests {
+            if !unique_test_names.insert(test.desc().name().to_string()) {
+                let _ = writeln!(
+                    self.printer.term(),
+                    "the test name is conflicted: {}",
+                    test.desc().name()
+                );
+                return Err(ExitStatus::FAILED);
             }
 
-            (
-                PendingTests {
-                    inner: pending_tests,
-                },
-                num_filtered_out,
-            )
-        };
+            if self.args.is_filtered(test.desc().name()) {
+                filtered_out_tests.push(test);
+                continue;
+            }
 
-        pin_mut!(pending_tests);
+            // Since PendingTest may contain the immovable state must be pinned
+            // before starting any operations.
+            // Here, each test case is allocated on the heap.
+            let (desc, context) = test.deconstruct();
+            pending_tests.push(Box::pin(PendingTest {
+                desc,
+                context: Some(context),
+                test_case: None,
+                outcome: None,
+                printer: &self.printer,
+                name_length: 0,
+            }));
+        }
 
         if self.args.list {
             self.printer
                 .print_list(pending_tests.iter().map(|test| &test.desc));
-            return ExitStatus::OK;
+            return Err(ExitStatus::OK);
         }
 
         let _ = writeln!(self.printer.term(), "running {} tests", pending_tests.len());
@@ -202,67 +170,101 @@ impl<'a> TestDriver<'a> {
             .max()
             .unwrap_or(0);
 
-        futures_util::stream::iter(pending_tests.as_mut().iter_pin_mut()) //
-            .for_each_concurrent(None, |mut test| {
+        futures_util::stream::iter(pending_tests.iter_mut()) //
+            .for_each_concurrent(None, |test| {
                 test.as_mut()
                     .start(&self.args, max_name_length, &mut runner);
                 test
             })
             .await;
 
-        let mut num_passed = 0;
-        let mut failed_tests = vec![];
-        let mut num_measured = 0;
-        let mut num_ignored = 0;
-        for test in pending_tests.iter() {
+        let mut passed = vec![];
+        let mut failed = vec![];
+        let mut benches = vec![];
+        let mut ignored = vec![];
+        for test in &pending_tests {
             match test.outcome {
                 Some(ref outcome) => match outcome.kind() {
-                    OutcomeKind::Passed => num_passed += 1,
-                    OutcomeKind::Failed => {
-                        failed_tests.push((test.desc.clone(), outcome.err_msg()))
+                    OutcomeKind::Passed => passed.push(test.desc.clone()),
+                    OutcomeKind::Failed => failed.push((test.desc.clone(), outcome.err_msg())),
+                    OutcomeKind::Measured { average, variance } => {
+                        benches.push((test.desc.clone(), (*average, *variance)))
                     }
-                    OutcomeKind::Measured { .. } => num_measured += 1,
                 },
-                None => num_ignored += 1,
+                None => ignored.push(test.desc.clone()),
             }
         }
 
-        let mut status = self.printer.styled("ok").green();
-        if !failed_tests.is_empty() {
-            status = self.printer.styled("FAILED").red();
-            let _ = writeln!(self.printer.term());
-            let _ = writeln!(self.printer.term(), "failures:");
-            for (desc, msg) in &failed_tests {
-                let _ = writeln!(self.printer.term(), "---- {} ----", desc.name());
-                if let Some(msg) = msg {
-                    let _ = self.printer.term().write_str(&*msg);
-                    if msg.chars().last().map_or(true, |c| c != '\n') {
-                        let _ = self.printer.term().write_str("\n");
-                    }
-                }
-            }
+        let report = Report {
+            passed,
+            failed,
+            benches,
+            ignored,
+            filtered_out: filtered_out_tests
+                .into_iter()
+                .map(|test| {
+                    let (desc, _) = test.deconstruct();
+                    desc
+                })
+                .collect(),
+        };
+        let _ = report.print(&self.printer);
 
-            let _ = writeln!(self.printer.term());
-            let _ = writeln!(self.printer.term(), "failures:");
-            for (desc, _) in &failed_tests {
-                let _ = writeln!(self.printer.term(), "    {}", desc.name());
-            }
-        }
+        Ok(report)
+    }
+}
 
-        let _ = writeln!(self.printer.term());
-        let _ = writeln!(self.printer.term(), "test result: {status}. {passed} passed; {failed} failed; {ignored} ignored; {measured} measured; {filtered_out} filtered out",
-            status = status,
-            passed = num_passed,
-            failed = failed_tests.len(),
-            ignored = num_ignored,
-            measured = num_measured,
-            filtered_out = num_filtered_out,
-        );
+pub(crate) struct Report {
+    passed: Vec<TestDesc>,
+    failed: Vec<(TestDesc, Option<Arc<Cow<'static, str>>>)>,
+    benches: Vec<(TestDesc, (u64, u64))>,
+    ignored: Vec<TestDesc>,
+    filtered_out: Vec<TestDesc>,
+}
 
-        if failed_tests.is_empty() {
+impl Report {
+    pub(crate) fn status(&self) -> ExitStatus {
+        if self.failed.is_empty() {
             ExitStatus::OK
         } else {
             ExitStatus::FAILED
         }
+    }
+
+    fn print(&self, printer: &Printer) -> io::Result<()> {
+        let mut status = printer.styled("ok").green();
+
+        if !self.failed.is_empty() {
+            status = printer.styled("FAILED").red();
+            writeln!(printer.term())?;
+            writeln!(printer.term(), "failures:")?;
+            for (desc, msg) in &self.failed {
+                writeln!(printer.term(), "---- {} ----", desc.name())?;
+                if let Some(msg) = msg {
+                    printer.term().write_str(&*msg)?;
+                    if msg.chars().last().map_or(true, |c| c != '\n') {
+                        printer.term().write_str("\n")?;
+                    }
+                }
+            }
+
+            writeln!(printer.term())?;
+            writeln!(printer.term(), "failures:")?;
+            for (desc, _) in &self.failed {
+                writeln!(printer.term(), "    {}", desc.name())?;
+            }
+        }
+
+        writeln!(printer.term())?;
+        writeln!(printer.term(), "test result: {status}. {passed} passed; {failed} failed; {ignored} ignored; {measured} measured; {filtered_out} filtered out",
+            status = status,
+            passed = self.passed.len(),
+            failed = self.failed.len(),
+            ignored = self.ignored.len(),
+            measured = self.benches.len(),
+            filtered_out = self.filtered_out.len(),
+        )?;
+
+        Ok(())
     }
 }

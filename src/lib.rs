@@ -1,8 +1,8 @@
 //! A library for writing asynchronous tests.
 
 #![doc(html_root_url = "https://docs.rs/mimicaw/0.1.0")]
-#![deny(missing_docs, unsafe_code)]
-#![forbid(clippy::unimplemented, clippy::todo)]
+#![deny(missing_docs)]
+#![forbid(unsafe_code, clippy::unimplemented, clippy::todo)]
 
 mod args;
 mod driver;
@@ -75,7 +75,10 @@ pub async fn run_tests<D>(
     runner: impl TestRunner<D>,
 ) -> ExitStatus {
     let driver = TestDriver::new(&args);
-    driver.run_tests(tests, runner).await
+    match driver.run_tests(tests, runner).await {
+        Ok(report) => report.status(),
+        Err(status) => status,
+    }
 }
 
 #[test]
