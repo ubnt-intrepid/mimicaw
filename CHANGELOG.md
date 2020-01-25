@@ -6,6 +6,18 @@ This format is based on [Keep a Changelog], and this project adheres to [Semanti
 
 ## [Unreleased]
 
+## [0.1.1] (2020-01-25)
+
+### Added
+
+* Support for reporting the test summary ([#2](https://github.com/ubnt-intrepid/mimicaw/pull/2)).
+  The definition of `Report` introduced here is experimental and will be changed
+  in the future version.
+
+### Fixed
+
+* Make sure to pin by the test case, rather than the collection of entire test cases (in [a5b372a](https://github.com/ubnt-intrepid/mimicaw/commit/a5b372a3d94fd606984579bd373f3688dec83b46) and [daa6526](https://github.com/ubnt-intrepid/mimicaw/commit/daa6526c5e483719944f3a298b805040bf368f32)).
+
 ## [0.1.0] (2020-01-24)
 
 ## [0.0.2] (2020-01-23)
@@ -16,7 +28,8 @@ This format is based on [Keep a Changelog], and this project adheres to [Semanti
 
 <!-- links -->
 
-[Unreleased]: https://github.com/ubnt-intrepid/mimicaw/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ubnt-intrepid/mimicaw/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/ubnt-intrepid/mimicaw/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ubnt-intrepid/mimicaw/compare/v0.0.2...v0.1.0
 [0.0.2]: https://github.com/ubnt-intrepid/mimicaw/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/ubnt-intrepid/mimicaw/tree/v0.0.1
