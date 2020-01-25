@@ -1,4 +1,54 @@
-//! A library for writing asynchronous tests.
+/*!
+A library for writing asynchronous tests.
+
+This library provides a framework for writing the free-style,
+asynchronous tests without using the default test harness
+provided by `rustc`.
+
+The concept and design are **strongly** inspired by
+[`libtest-mimic`](https://github.com/LukasKalbertodt/libtest-mimic),
+but also focuses on the affinity with the `async`/`.await` syntax.
+
+# Example
+
+```no_run
+# fn main() { futures::executor::block_on(async {
+use mimicaw::{Args, Test, TestDesc, Outcome};
+
+// Parse command line arguments.
+let args = Args::from_env().unwrap_or_else(|st| st.exit());
+
+// Each test case is described using `Test` having one associated data.
+//
+// The data will be used by the runner described below to run tests.
+let tests = vec![
+    Test::test("case1", "foo"),
+    Test::test("case2", "bar"),
+    Test::test("case3_long_computation", "baz").ignore(true),
+    Test::test("case4", "The quick brown fox jumps over the lazy dog."),
+];
+
+// A function for running the test cases.
+//
+// Each test result is asynchronous and a future is returned to acquire the result.
+let runner = |_desc: TestDesc, data: &'static str| {
+    async move {
+        match data {
+            "foo" | "baz" => Outcome::passed(),
+            "bar" => Outcome::failed().error_message("`bar' is forbidden"),
+            data => Outcome::failed().error_message(format!("unknown data: {}", data)),
+        }
+    }
+};
+
+// Run the process of test suite.
+//
+// The test cases are filtered according to the command line arguments, and then executed concurrently from the top.
+let status = mimicaw::run_tests(&args, tests, runner).await;
+status.exit()
+# }) }
+```
+!*/
 
 #![doc(html_root_url = "https://docs.rs/mimicaw/0.1.0")]
 #![deny(missing_docs)]

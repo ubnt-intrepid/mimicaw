@@ -28,48 +28,26 @@
 
 <br />
 
-`mimicaw` is a tiny library for writing asynchronous tests.
-The concept of this library is inspired by [`libtest-mimic`](https://github.com/LukasKalbertodt/libtest-mimic), but also focuses on
-the compatibility with `async`/`.await` language syntax.
+`mimicaw` is a small library that provides a framework for writing the free-style, asynchronous tests without using the default test harness provided by `rustc`.
+The concept and design are **strongly** inspired by [`libtest-mimic`](https://github.com/LukasKalbertodt/libtest-mimic), but also focuses on
+the affinity with the `async`/`.await` syntax.
 
-## Example
+## Installation
 
-```rust
-use mimicaw::{Args, Test, TestDesc, Outcome};
+First, add `mimicaw` as a development dependency of your package.
+If you are the user of [`cargo-edit`](https://github.com/killercup/cargo-edit):
 
-// Parse command line arguments.
-let args = Args::from_env().unwrap_or_else(|st| st.exit());
+```shell-session
+$ cargo add --dev mimcaw
+```
 
-// Each test case is described using `Test` having one associated data.
-//
-// The data will be used by the runner described below to run tests.
-let tests = vec![
-    Test::test("case1", "foo"),
-    Test::test("case2", "bar"),
-    Test::test("case3_long_computation", "baz"),
-    Test::test("case4", "The quick brown fox jumps over the lazy dog."),
-];
+The test binaries must explicitly set the `harness` key to make the default test harness provided by `rustc` disabled:
 
-// A closure for running the test cases.
-//
-// Each test result is asynchronous and a future is returned
-// to acquire the result.
-let runner = |_desc: TestDesc, data: &str| {
-    async move {
-        match data {
-            "foo" | "baz" => Outcome::passed(),
-            "bar" => Outcome::failed().error_message("`bar' is forbidden"),
-            data => Outcome::failed().error_message(format!("unknown data: {}", data)),
-        }
-    }
-};
-
-// Run the process of test suite.
-//
-// The test cases are filtered according to the command line arguments,
-// and then executed concurrently from the top.
-let status = mimicaw::run_tests(&args, tests, runner).await;
-status.exit()
+```toml
+[[test]]
+name = "mytest"
+path = "tests/mytest.rs"
+harness = false
 ```
 
 ## Resources
