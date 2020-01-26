@@ -53,9 +53,9 @@ impl Report {
             for (desc, msg) in &self.failed {
                 writeln!(printer.term(), "---- {} ----", desc.name())?;
                 if let Some(msg) = msg {
-                    printer.term().write_str(&*msg)?;
+                    write!(printer.term(), "{}", msg)?;
                     if msg.chars().last().map_or(true, |c| c != '\n') {
-                        printer.term().write_str("\n")?;
+                        writeln!(printer.term())?;
                     }
                 }
             }
