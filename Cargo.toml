@@ -27,6 +27,7 @@ cargo-husky = "1"
 chrono = "0.4"
 futures = "0.3"
 futures-timer = "2"
+maybe-unwind = "0.0.2"
 rand = "0.7"
 sxd-document = "0.3"
 tokio = { version = "0.2.0", features = [ "full" ] }
