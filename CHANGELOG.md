@@ -6,6 +6,12 @@ This format is based on [Keep a Changelog], and this project adheres to [Semanti
 
 ## [Unreleased]
 
+## [0.1.2] (2020-01-27)
+
+### Fixed
+
+* replace inappropriate `Term::write_str` with `writeln!` ([d19fc98](https://github.com/ubnt-intrepid/mimicaw/commit/d19fc983def213eed5f7ed81e9991862125df2b9))
+
 ## [0.1.1] (2020-01-25)
 
 ### Added
@@ -28,7 +34,8 @@ This format is based on [Keep a Changelog], and this project adheres to [Semanti
 
 <!-- links -->
 
-[Unreleased]: https://github.com/ubnt-intrepid/mimicaw/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/ubnt-intrepid/mimicaw/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/ubnt-intrepid/mimicaw/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/ubnt-intrepid/mimicaw/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ubnt-intrepid/mimicaw/compare/v0.0.2...v0.1.0
 [0.0.2]: https://github.com/ubnt-intrepid/mimicaw/compare/v0.0.1...v0.0.2

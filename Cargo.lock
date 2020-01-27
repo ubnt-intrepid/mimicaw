@@ -427,7 +427,7 @@ dependencies = [
 
 [[package]]
 name = "mimicaw"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "async-std 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "cargo-husky 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)",

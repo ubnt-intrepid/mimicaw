@@ -50,8 +50,9 @@ status.exit()
 ```
 !*/
 
-#![doc(html_root_url = "https://docs.rs/mimicaw/0.1.1")]
+#![doc(html_root_url = "https://docs.rs/mimicaw/0.1.2")]
 #![deny(missing_docs)]
+#![cfg_attr(test, deny(warnings))]
 #![forbid(unsafe_code, clippy::unimplemented, clippy::todo)]
 
 mod args;
