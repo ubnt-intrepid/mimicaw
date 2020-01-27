@@ -146,6 +146,7 @@
 <span id="146">146</span>
 <span id="147">147</span>
 <span id="148">148</span>
+<span id="149">149</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="doccomment">/*!
 A library for writing asynchronous tests.
@@ -199,8 +200,9 @@ status.exit()
 ```
 !*/</span>
 
-<span class="attribute">#![<span class="ident">doc</span>(<span class="ident">html_root_url</span> <span class="op">=</span> <span class="string">&quot;https://docs.rs/mimicaw/0.1.1&quot;</span>)]</span>
+<span class="attribute">#![<span class="ident">doc</span>(<span class="ident">html_root_url</span> <span class="op">=</span> <span class="string">&quot;https://docs.rs/mimicaw/0.1.2&quot;</span>)]</span>
 <span class="attribute">#![<span class="ident">deny</span>(<span class="ident">missing_docs</span>)]</span>
+<span class="attribute">#![<span class="ident">cfg_attr</span>(<span class="ident">test</span>, <span class="ident">deny</span>(<span class="ident">warnings</span>))]</span>
 <span class="attribute">#![<span class="ident">forbid</span>(<span class="ident">unsafe_code</span>, <span class="ident">clippy</span>::<span class="ident">unimplemented</span>, <span class="ident">clippy</span>::<span class="ident">todo</span>)]</span>
 
 <span class="kw">mod</span> <span class="ident">args</span>;
