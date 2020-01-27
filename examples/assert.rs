@@ -1,7 +1,7 @@
-use futures::{executor::block_on, prelude::*};
-use maybe_unwind::FutureMaybeUnwindExt as _;
+use futures::executor::block_on;
+use maybe_unwind::maybe_unwind;
 use mimicaw::{Args, Outcome, Test};
-use std::pin::Pin;
+use std::panic::UnwindSafe;
 
 fn main() {
     maybe_unwind::set_hook();
@@ -12,45 +12,38 @@ fn main() {
     let age = 14;
     let gender = "woman";
 
-    let tests = vec![
+    let tests: Vec<Test<Box<dyn Fn() + UnwindSafe>>> = vec![
         Test::test(
             "check_name",
-            async {
+            Box::new(|| {
                 assert_eq!(name, "Alice");
-            }
-            .boxed_local(),
+            }),
         ),
         Test::test(
             "check_age",
-            async {
+            Box::new(|| {
                 assert_eq!(age, 14);
-            }
-            .boxed_local(),
+            }),
         ),
         Test::test(
             "check_gender",
-            async {
+            Box::new(|| {
                 assert_eq!(gender, "man");
-            }
-            .boxed_local(),
+            }),
         ),
     ];
 
     block_on(mimicaw::run_tests(
         &args,
         tests,
-        |_desc, fut: Pin<Box<dyn Future<Output = ()>>>| {
+        |_desc, f: Box<dyn Fn() + UnwindSafe>| {
             async move {
-                match std::panic::AssertUnwindSafe(fut).maybe_unwind().await {
+                match maybe_unwind(f) {
                     Ok(()) => Outcome::passed(),
                     Err(unwind) => {
-                        let location = match (unwind.file(), unwind.line(), unwind.column()) {
-                            (Some(file), Some(line), Some(column)) => {
-                                format!("{}:{}:{}", file, line, column)
-                            }
-                            (Some(file), _, _) => format!("{}:<unknown>", file),
-                            _ => "<unknown>".into(),
-                        };
+                        let location = unwind
+                            .location()
+                            .map_or("<unknown>".into(), |loc| loc.to_string());
                         Outcome::failed().error_message(format!(
                             "[{}] {}",
                             location,
