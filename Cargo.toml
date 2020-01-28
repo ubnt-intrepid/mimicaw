@@ -32,3 +32,10 @@ rand = "0.7"
 sxd-document = "0.3"
 tokio = { version = "0.2.0", features = [ "full" ] }
 version-sync = "0.8"
+
+[workspace]
+members = [
+  ".",
+  "examples/framework",
+  "examples/framework/macros",
+]

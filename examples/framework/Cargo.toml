@@ -1,0 +1,15 @@
+[package]
+name = "mimicaw-framework"
+version = "0.0.0" # never publish
+publish = false
+authors = ["Yusuke Sasaki <yusuke.sasaki.nuem@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+mimicaw = { path = "../.." }
+mimicaw-framework-macros = { path = "macros" }
+futures = "0.3"
+maybe-unwind = "0.1"
+
+[features]
+nightly = []
