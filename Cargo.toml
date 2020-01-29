@@ -19,7 +19,7 @@ futures-channel = "0.3"
 futures-util = { version = "0.3", features = [ "std" ], default-features = false }
 getopts = "0.2"
 num-format = "0.4"
-pin-project-lite = "0.1"
+pin-project = "0.4"
 
 [dev-dependencies]
 async-std = { version = "1", features = ["attributes"] }

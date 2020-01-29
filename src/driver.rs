@@ -10,7 +10,7 @@ use futures_core::{
     task::{self, Poll},
 };
 use futures_util::{ready, stream::StreamExt};
-use pin_project_lite::pin_project;
+use pin_project::pin_project;
 use std::{collections::HashSet, io::Write, pin::Pin};
 
 /// The runner of test cases.
@@ -34,16 +34,15 @@ where
     }
 }
 
-pin_project! {
-    struct PendingTest<'a, D, R> {
-        desc: TestDesc,
-        context: Option<D>,
-        #[pin]
-        test_case: Option<R>,
-        outcome: Option<Outcome>,
-        printer: &'a Printer,
-        name_length: usize,
-    }
+#[pin_project]
+struct PendingTest<'a, D, R> {
+    desc: TestDesc,
+    context: Option<D>,
+    #[pin]
+    test_case: Option<R>,
+    outcome: Option<Outcome>,
+    printer: &'a Printer,
+    name_length: usize,
 }
 
 impl<D, R> PendingTest<'_, D, R> {
