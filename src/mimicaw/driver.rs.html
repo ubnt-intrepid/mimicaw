@@ -207,7 +207,6 @@
 <span id="207">207</span>
 <span id="208">208</span>
 <span id="209">209</span>
-<span id="210">210</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="kw">use</span> <span class="kw">crate</span>::{
     <span class="ident">args</span>::<span class="ident">Args</span>,
@@ -221,7 +220,7 @@
     <span class="ident">task</span>::{<span class="self">self</span>, <span class="ident">Poll</span>},
 };
 <span class="kw">use</span> <span class="ident">futures_util</span>::{<span class="ident">ready</span>, <span class="ident">stream</span>::<span class="ident">StreamExt</span>};
-<span class="kw">use</span> <span class="ident">pin_project_lite</span>::<span class="ident">pin_project</span>;
+<span class="kw">use</span> <span class="ident">pin_project</span>::<span class="ident">pin_project</span>;
 <span class="kw">use</span> <span class="ident">std</span>::{<span class="ident">collections</span>::<span class="ident">HashSet</span>, <span class="ident">io</span>::<span class="ident">Write</span>, <span class="ident">pin</span>::<span class="ident">Pin</span>};
 
 <span class="doccomment">/// The runner of test cases.</span>
@@ -245,16 +244,15 @@
     }
 }
 
-<span class="macro">pin_project</span><span class="macro">!</span> {
-    <span class="kw">struct</span> <span class="ident">PendingTest</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">D</span>, <span class="ident">R</span><span class="op">&gt;</span> {
-        <span class="ident">desc</span>: <span class="ident">TestDesc</span>,
-        <span class="ident">context</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">D</span><span class="op">&gt;</span>,
-        <span class="attribute">#[<span class="ident">pin</span>]</span>
-        <span class="ident">test_case</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">R</span><span class="op">&gt;</span>,
-        <span class="ident">outcome</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Outcome</span><span class="op">&gt;</span>,
-        <span class="ident">printer</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="ident">Printer</span>,
-        <span class="ident">name_length</span>: <span class="ident">usize</span>,
-    }
+<span class="attribute">#[<span class="ident">pin_project</span>]</span>
+<span class="kw">struct</span> <span class="ident">PendingTest</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">D</span>, <span class="ident">R</span><span class="op">&gt;</span> {
+    <span class="ident">desc</span>: <span class="ident">TestDesc</span>,
+    <span class="ident">context</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">D</span><span class="op">&gt;</span>,
+    <span class="attribute">#[<span class="ident">pin</span>]</span>
+    <span class="ident">test_case</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">R</span><span class="op">&gt;</span>,
+    <span class="ident">outcome</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Outcome</span><span class="op">&gt;</span>,
+    <span class="ident">printer</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="ident">Printer</span>,
+    <span class="ident">name_length</span>: <span class="ident">usize</span>,
 }
 
 <span class="kw">impl</span><span class="op">&lt;</span><span class="ident">D</span>, <span class="ident">R</span><span class="op">&gt;</span> <span class="ident">PendingTest</span><span class="op">&lt;</span><span class="lifetime">&#39;_</span>, <span class="ident">D</span>, <span class="ident">R</span><span class="op">&gt;</span> {
