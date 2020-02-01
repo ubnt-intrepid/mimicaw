@@ -23,6 +23,8 @@
 <span id="23">23</span>
 <span id="24">24</span>
 <span id="25">25</span>
+<span id="26">26</span>
+<span id="27">27</span>
 </pre><div class="example-wrap"><pre class="rust ">
 <span class="kw">use</span> <span class="ident">futures</span>::{<span class="ident">executor</span>::<span class="ident">block_on</span>, <span class="ident">future</span>::<span class="ident">Future</span>};
 <span class="kw">use</span> <span class="ident">maybe_unwind</span>::<span class="ident">FutureMaybeUnwindExt</span>;
@@ -38,14 +40,16 @@
 
     <span class="kw">let</span> <span class="ident">args</span> <span class="op">=</span> <span class="ident">Args</span>::<span class="ident">from_env</span>().<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> <span class="ident">e</span>.<span class="ident">exit</span>());
     <span class="kw">let</span> <span class="ident">tests</span> <span class="op">=</span> <span class="ident">tests</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">factory</span><span class="op">|</span> (<span class="kw-2">*</span><span class="ident">factory</span>)());
-    <span class="kw">let</span> <span class="ident">status</span> <span class="op">=</span> <span class="ident">block_on</span>(<span class="ident">mimicaw</span>::<span class="ident">run_tests</span>(<span class="kw-2">&amp;</span><span class="ident">args</span>, <span class="ident">tests</span>, <span class="op">|</span><span class="ident">_desc</span>, <span class="ident">test</span>: <span class="ident">TestCase</span><span class="op">|</span> {
-        <span class="kw">async</span> <span class="kw">move</span> {
+    <span class="kw">let</span> <span class="ident">status</span> <span class="op">=</span> <span class="ident">block_on</span>(<span class="ident">mimicaw</span>::<span class="ident">run_tests</span>(
+        <span class="kw-2">&amp;</span><span class="ident">args</span>,
+        <span class="ident">tests</span>,
+        <span class="op">|</span><span class="ident">_desc</span>, <span class="ident">test</span>: <span class="ident">TestCase</span><span class="op">|</span> <span class="kw">async</span> <span class="kw">move</span> {
             <span class="kw">match</span> <span class="ident">test</span>.<span class="ident">maybe_unwind</span>().<span class="kw">await</span> {
                 <span class="prelude-val">Ok</span>(()) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">Outcome</span>::<span class="ident">passed</span>(),
                 <span class="prelude-val">Err</span>(<span class="ident">unwind</span>) <span class="op">=</span><span class="op">&gt;</span> <span class="ident">Outcome</span>::<span class="ident">failed</span>().<span class="ident">error_message</span>(<span class="ident">unwind</span>.<span class="ident">to_string</span>()),
             }
-        }
-    }));
+        },
+    ));
 
     <span class="ident">status</span>.<span class="ident">exit</span>();
 }
