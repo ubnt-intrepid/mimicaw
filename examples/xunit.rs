@@ -20,13 +20,11 @@ fn main() -> io::Result<()> {
     let report = block_on(mimicaw::run_tests_with_report(
         &args,
         tests,
-        |_desc, data| {
-            async move {
-                match data {
-                    "foo" | "baz" => Outcome::passed(),
-                    "bar" => Outcome::failed().error_message("`bar' is forbidden"),
-                    data => Outcome::failed().error_message(format!("unknown data: {}", data)),
-                }
+        |_desc, data| async move {
+            match data {
+                "foo" | "baz" => Outcome::passed(),
+                "bar" => Outcome::failed().error_message("`bar' is forbidden"),
+                data => Outcome::failed().error_message(format!("unknown data: {}", data)),
             }
         },
     ))

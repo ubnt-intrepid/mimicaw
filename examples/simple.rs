@@ -11,13 +11,11 @@ fn main() {
         Test::test("case4", "The quick brown fox jumps over the lazy dog."),
     ];
 
-    block_on(mimicaw::run_tests(&args, tests, |_desc, data| {
-        async move {
-            match data {
-                "foo" | "baz" => Outcome::passed(),
-                "bar" => Outcome::failed().error_message("`bar' is forbidden"),
-                data => Outcome::failed().error_message(format!("unknown data: {}", data)),
-            }
+    block_on(mimicaw::run_tests(&args, tests, |_desc, data| async move {
+        match data {
+            "foo" | "baz" => Outcome::passed(),
+            "bar" => Outcome::failed().error_message("`bar' is forbidden"),
+            data => Outcome::failed().error_message(format!("unknown data: {}", data)),
         }
     }))
     .exit()

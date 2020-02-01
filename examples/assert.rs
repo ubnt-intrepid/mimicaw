@@ -36,20 +36,18 @@ fn main() {
     block_on(mimicaw::run_tests(
         &args,
         tests,
-        |_desc, f: Box<dyn Fn() + UnwindSafe>| {
-            async move {
-                match maybe_unwind(f) {
-                    Ok(()) => Outcome::passed(),
-                    Err(unwind) => {
-                        let location = unwind
-                            .location()
-                            .map_or("<unknown>".into(), |loc| loc.to_string());
-                        Outcome::failed().error_message(format!(
-                            "[{}] {}",
-                            location,
-                            unwind.payload_str()
-                        ))
-                    }
+        |_desc, f: Box<dyn Fn() + UnwindSafe>| async move {
+            match maybe_unwind(f) {
+                Ok(()) => Outcome::passed(),
+                Err(unwind) => {
+                    let location = unwind
+                        .location()
+                        .map_or("<unknown>".into(), |loc| loc.to_string());
+                    Outcome::failed().error_message(format!(
+                        "[{}] {}",
+                        location,
+                        unwind.payload_str()
+                    ))
                 }
             }
         },
