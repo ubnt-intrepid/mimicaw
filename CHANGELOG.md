@@ -6,6 +6,12 @@ This format is based on [Keep a Changelog], and this project adheres to [Semanti
 
 ## [Unreleased]
 
+## [0.1.3] (2020-02-02)
+
+### Changed
+
+* switch to `pin-project` ([6b7cc9e](https://github.com/ubnt-intrepid/mimicaw/commit/6b7cc9e3b83de5126f760e321dddbb2f9bfb492b))
+
 ## [0.1.2] (2020-01-27)
 
 ### Fixed
@@ -34,7 +40,8 @@ This format is based on [Keep a Changelog], and this project adheres to [Semanti
 
 <!-- links -->
 
-[Unreleased]: https://github.com/ubnt-intrepid/mimicaw/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/ubnt-intrepid/mimicaw/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/ubnt-intrepid/mimicaw/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/ubnt-intrepid/mimicaw/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/ubnt-intrepid/mimicaw/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ubnt-intrepid/mimicaw/compare/v0.0.2...v0.1.0

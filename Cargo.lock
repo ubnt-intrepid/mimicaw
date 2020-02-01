@@ -479,7 +479,7 @@ dependencies = [
 
 [[package]]
 name = "mimicaw"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "async-std",
  "cargo-husky",
