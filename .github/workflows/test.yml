@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_VERBOSE: true
+  RUST_BACKTRACE: full
 
 jobs:
   Test:
