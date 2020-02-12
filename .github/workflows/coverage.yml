@@ -1,4 +1,4 @@
-name: Workflow
+name: Coverage
 
 on:
   push:
@@ -7,27 +7,23 @@ on:
   pull_request:
 
 env:
+  CARGO_HUSKY_DONT_INSTALL_HOOKS: true
   CARGO_TERM_VERBOSE: true
+  CARGO_INCREMENTAL: '0'
   RUST_BACKTRACE: full
+  RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Zno-landing-pads'
 
 jobs:
-  DeployMasterDoc:
+  Coverage:
     runs-on: ubuntu-18.04
-    container:
-      image: rustops/crates-build-env:latest
-      options: --memory 3221225472
     steps:
     - uses: actions/checkout@v1
-      with:
-        submodules: true
-
     - name: Install Rust toolchain
       uses: actions-rs/toolchain@v1
       with:
         profile: minimal
         toolchain: nightly
         override: true
-
     - name: Cache cargo registry
       uses: actions/cache@v1
       with:
@@ -44,26 +40,25 @@ jobs:
     #     path: target
     #     key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
-    # TODO:
-    # * restrict network access during building docs.
-    # * restrict all write access expect target/
-    - name: Build API docs
+    - name: Run tests
       uses: actions-rs/cargo@v1
       with:
-        command: doc
-        args: --no-deps --workspace
-    - run: rm -fv target/doc/.lock
+        command: test
+        args: --workspace
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@master
+    - name: Install grcov
+      run: |
+        curl -L https://github.com/mozilla/grcov/releases/latest/download/grcov-linux-x86_64.tar.bz2 | tar jxf -
+        mkdir -pv $HOME/.cargo/bin
+        mv -v ./grcov $HOME/.cargo/bin
+        echo ::add-path::$HOME/.cargo/bin
+    - name: Collect coverage
+      uses: actions-rs/grcov@v0.1
+      id: coverage
+
+    - name: Send report to Codecov
+      uses: codecov/codecov-action@v1.0.3
+      if: success()
       with:
-        name: published-docs
-        path: target/doc
-
-    - name: Deply to GitHub Pages
-      if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-      uses: peaceiris/actions-gh-pages@v2.3.1
-      env:
-        ACTIONS_DEPLOY_KEY: ${{ secrets.ACTIONS_DEPLOY_KEY }}
-        PUBLISH_BRANCH: gh-pages
-        PUBLISH_DIR: ./target/doc
+        file: ./lcov.info
+        token: ${{ secrets.CODECOV_TOKEN }}
